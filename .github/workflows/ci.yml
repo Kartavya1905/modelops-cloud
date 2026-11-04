@@ -1,0 +1,81 @@
+# Milestone 1 CI: code quality on every push/PR, then a full local-stack smoke test.
+# Free on public repositories (GitHub-hosted ubuntu-latest runners include Docker).
+# Action versions are pinned by major tag for now; M11 pins them by commit SHA.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: lint · typecheck · unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6 # version comes from "packageManager" in package.json
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+
+  smoke:
+    name: local stack smoke test
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Generate throwaway secrets
+        run: pnpm env:init
+
+      - name: Start infrastructure (waits for healthchecks)
+        run: pnpm dev:up
+
+      - name: Build and start API + web
+        run: |
+          pnpm build
+          nohup pnpm --filter @modelops/api start > api.log 2>&1 &
+          nohup pnpm --filter @modelops/web start > web.log 2>&1 &
+          for url in http://127.0.0.1:4000/api/v1/health/live http://127.0.0.1:3300/; do
+            for i in $(seq 1 60); do
+              curl -fsS "$url" > /dev/null && break
+              sleep 1
+            done
+          done
+
+      - name: Smoke test
+        run: pnpm test:smoke
+
+      - name: Diagnostics on failure
+        if: failure()
+        run: |
+          pnpm dev:ps || true
+          pnpm dev:logs || true
+          cat api.log web.log || true
+
+      - name: Tear down
+        if: always()
+        run: pnpm dev:clean

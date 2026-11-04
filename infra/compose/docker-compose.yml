@@ -1,0 +1,197 @@
+# ModelOps Cloud — core local infrastructure (Milestone 1).
+#
+# Started through `pnpm dev:up`, which runs:
+#   docker compose --project-name modelops --env-file .env -f infra/compose/docker-compose.yml up -d --build --wait
+#
+# Design notes:
+#   - Every host port is bound to 127.0.0.1, so nothing is reachable from the LAN.
+#   - Every service has a healthcheck; `--wait` blocks until all are healthy.
+#   - Memory/CPU limits keep the whole stack laptop-sized (see docs/10-local-development.md).
+#   - Object storage is SeaweedFS (S3 API), not MinIO — see docs/adr/0003.
+
+name: modelops
+
+x-hardening: &hardening
+  security_opt:
+    - no-new-privileges:true
+  restart: unless-stopped
+
+services:
+  # ---------------------------------------------------------------- PostgreSQL
+  postgres:
+    <<: *hardening
+    image: postgres:18.6
+    environment:
+      POSTGRES_PASSWORD: ${MO_POSTGRES_SUPERUSER_PASSWORD:?run pnpm env:init}
+      MO_DB_APP_USER: ${MO_DB_APP_USER:?}
+      MO_DB_APP_PASSWORD: ${MO_DB_APP_PASSWORD:?}
+      MO_DB_MLFLOW_USER: ${MO_DB_MLFLOW_USER:?}
+      MO_DB_MLFLOW_PASSWORD: ${MO_DB_MLFLOW_PASSWORD:?}
+    volumes:
+      # Postgres 18 images keep data under /var/lib/postgresql/<major>/docker.
+      - pgdata:/var/lib/postgresql
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - '127.0.0.1:${MO_PORT_POSTGRES:-15432}:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d modelops']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    deploy:
+      resources:
+        limits: { cpus: '1.0', memory: 512M }
+    networks: [backend]
+
+  # --------------------------------------------------------------------- Redis
+  redis:
+    <<: *hardening
+    image: redis:8.8.4
+    # noeviction is required by BullMQ: evicting queue keys would silently lose jobs.
+    command:
+      - redis-server
+      - --requirepass
+      - ${MO_REDIS_PASSWORD:?run pnpm env:init}
+      - --appendonly
+      - 'yes'
+      - --maxmemory
+      - 200mb
+      - --maxmemory-policy
+      - noeviction
+    environment:
+      REDISCLI_AUTH: ${MO_REDIS_PASSWORD}
+    volumes:
+      - redisdata:/data
+    ports:
+      - '127.0.0.1:${MO_PORT_REDIS:-16379}:6379'
+    healthcheck:
+      test: ['CMD-SHELL', 'redis-cli ping | grep -q PONG']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    deploy:
+      resources:
+        limits: { cpus: '0.5', memory: 256M }
+    networks: [backend]
+
+  # ------------------------------------------------- Object storage (SeaweedFS)
+  seaweedfs:
+    <<: *hardening
+    image: chrislusf/seaweedfs:4.52
+    # The S3 identity file is rendered from environment variables at start-up,
+    # so the only place credentials live is the gitignored .env file.
+    entrypoint: ['/bin/sh', '-ec']
+    command:
+      - |
+        umask 077
+        cat > /tmp/s3.json <<EOF
+        {"identities":[{"name":"modelops","credentials":[{"accessKey":"$${MO_S3_ACCESS_KEY}","secretKey":"$${MO_S3_SECRET_KEY}"}],"actions":["Admin","Read","Write","List","Tagging"]}]}
+        EOF
+        exec weed server -dir=/data -ip=seaweedfs -ip.bind=0.0.0.0 \
+          -master.volumeSizeLimitMB=512 -volume.max=0 \
+          -s3 -s3.port=8333 -s3.config=/tmp/s3.json
+    environment:
+      MO_S3_ACCESS_KEY: ${MO_S3_ACCESS_KEY:?run pnpm env:init}
+      MO_S3_SECRET_KEY: ${MO_S3_SECRET_KEY:?run pnpm env:init}
+    volumes:
+      - s3data:/data
+    ports:
+      - '127.0.0.1:${MO_PORT_S3:-18333}:8333'
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:8333/healthz']
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+    deploy:
+      resources:
+        limits: { cpus: '1.0', memory: 512M }
+    networks: [backend]
+
+  # One-shot job: create the platform's buckets (idempotent), then exit 0.
+  storage-init:
+    image: modelops/mlflow:3.17.2
+    build: ./mlflow
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    read_only: true
+    restart: 'no'
+    command: ['python', '/opt/modelops/init_buckets.py']
+    environment:
+      MO_S3_ENDPOINT: http://seaweedfs:8333
+      MO_S3_ACCESS_KEY: ${MO_S3_ACCESS_KEY}
+      MO_S3_SECRET_KEY: ${MO_S3_SECRET_KEY}
+      MO_S3_REGION: ${MO_S3_REGION:-us-east-1}
+      MO_BUCKETS: mlflow-artifacts,model-artifacts,datasets,drift-captures,reports,uploads-staging
+    depends_on:
+      seaweedfs:
+        condition: service_healthy
+    networks: [backend]
+
+  # -------------------------------------------------------------------- MLflow
+  mlflow:
+    <<: *hardening
+    image: modelops/mlflow:3.17.2
+    build: ./mlflow
+    cap_drop: [ALL]
+    read_only: true
+    tmpfs:
+      - /tmp
+    command:
+      - mlflow
+      - server
+      - --host
+      - 0.0.0.0
+      - --port
+      - '5000'
+      - --workers
+      - '2'
+      - --serve-artifacts
+      - --artifacts-destination
+      - s3://mlflow-artifacts
+    environment:
+      # Read by `mlflow server` instead of passing the password on the command line.
+      MLFLOW_BACKEND_STORE_URI: postgresql+psycopg2://${MO_DB_MLFLOW_USER}:${MO_DB_MLFLOW_PASSWORD}@postgres:5432/mlflow
+      # Host-header allow-list (DNS-rebinding protection in MLflow 3).
+      MLFLOW_SERVER_ALLOWED_HOSTS: 'mlflow,mlflow:5000,localhost,localhost:*,127.0.0.1,127.0.0.1:*'
+      # MLflow 3 starts a background job runner (7 huey consumers, ~1 GB) for server-side GenAI
+      # jobs. ModelOps runs its own jobs in BullMQ, so it is switched off to keep the stack small.
+      MLFLOW_SERVER_ENABLE_JOB_EXECUTION: 'false'
+      MLFLOW_S3_ENDPOINT_URL: http://seaweedfs:8333
+      AWS_ACCESS_KEY_ID: ${MO_S3_ACCESS_KEY}
+      AWS_SECRET_ACCESS_KEY: ${MO_S3_SECRET_KEY}
+      AWS_DEFAULT_REGION: ${MO_S3_REGION:-us-east-1}
+    ports:
+      - '127.0.0.1:${MO_PORT_MLFLOW:-15000}:5000'
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'python',
+          '-c',
+          "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:5000/health', timeout=3).status == 200 else 1)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 30s
+    deploy:
+      resources:
+        limits: { cpus: '1.0', memory: 1G }
+    depends_on:
+      postgres:
+        condition: service_healthy
+      storage-init:
+        condition: service_completed_successfully
+    networks: [backend]
+
+networks:
+  backend:
+    name: modelops-backend
+
+volumes:
+  pgdata:
+  redisdata:
+  s3data:

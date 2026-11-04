@@ -1,0 +1,9 @@
+# Normalise every text file to LF in the repo and in the working tree.
+# Shell scripts and Dockerfiles run inside Linux containers, where CRLF breaks them.
+* text=auto eol=lf
+
+*.ps1 text eol=crlf
+*.png binary
+*.jpg binary
+*.onnx binary
+*.parquet binary

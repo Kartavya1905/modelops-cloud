@@ -1,0 +1,9 @@
+packages:
+  - apps/*
+  - packages/*
+
+# Supply-chain policy (ADR-0007): pnpm refuses packages published too recently,
+# giving the ecosystem time to catch compromised releases. We pin older patches
+# instead of adding exemptions to `minimumReleaseAgeExclude`.
+allowBuilds:
+  '@swc/core': true
