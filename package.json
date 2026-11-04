@@ -26,7 +26,7 @@
     "test:integration": "pnpm --filter @modelops/api test:integration",
     "db:deploy": "pnpm --filter @modelops/api db:deploy",
     "db:migrate": "pnpm --filter @modelops/api db:migrate",
-    "test:e2e": "pnpm --filter @modelops/e2e test",
+    "test:e2e": "pnpm --filter @modelops/e2e e2e",
     "screenshots": "pnpm --filter @modelops/e2e screenshots"
   },
   "devDependencies": {
