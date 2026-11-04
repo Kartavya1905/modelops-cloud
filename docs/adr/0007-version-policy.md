@@ -33,3 +33,9 @@ The brief asks for current, maintained, compatible versions. "Latest" is not alw
 - **Prisma:** 7.10.1 stable. npm's `latest` tag still pointed to `8.0.0-rc.30`.
 - **Install scripts:** approved `argon2`, `prisma`, `@prisma/engines`. **Denied `@scarf/scarf`** (install-time telemetry pulled in by `swagger-ui-dist`).
 - **Peer exception:** `openapi-typescript@7.13.0` declares `typescript: ^5.x`. Generation and typecheck were verified with TS 6.0.3, and the exception is recorded in `pnpm-workspace.yaml` (`peerDependencyRules`).
+
+## Addendum 3 — M3 (2026-11-04)
+
+- **Python gets the same rule:** `ml/pyproject.toml` sets uv's `exclude-newer = "2026-10-28T00:00:00Z"`, so every Python package (transitive dependencies included) must have been published at least 7 days before the lock was made. `torch` resolved to 2.14.1 because 2.15.0 was 6 days old.
+- **CPU-only PyTorch** comes from the official `download.pytorch.org/whl/cpu` index (an explicit index, used only for `torch`).
+- **mlflow-skinny** is pinned to the server's version (3.17.2) so client and server agree.

@@ -7,31 +7,33 @@ import { qk } from '@/lib/query/keys';
 
 export const ORG_ID = '7f1d2c3b-0000-4000-8000-000000000001';
 
+// Mirrors apps/api/src/common/authz/permissions.ts (the API's /auth/me sends the same lists).
+const READ: Permission[] = [
+  'org:read',
+  'member:read',
+  'project:read',
+  'experiment:read',
+  'model:read',
+];
+const WRITE: Permission[] = [
+  ...READ,
+  'project:create',
+  'project:update',
+  'model:create',
+  'model:register',
+];
+const ADMIN: Permission[] = [
+  ...WRITE,
+  'member:manage',
+  'invitation:create',
+  'project:archive',
+  'audit:read',
+];
 const PERMS: Record<Role, Permission[]> = {
-  OWNER: [
-    'org:read',
-    'member:read',
-    'member:manage',
-    'invitation:create',
-    'project:read',
-    'project:create',
-    'project:update',
-    'project:archive',
-    'audit:read',
-  ],
-  ADMIN: [
-    'org:read',
-    'member:read',
-    'member:manage',
-    'invitation:create',
-    'project:read',
-    'project:create',
-    'project:update',
-    'project:archive',
-    'audit:read',
-  ],
-  ML_ENGINEER: ['org:read', 'member:read', 'project:read', 'project:create', 'project:update'],
-  VIEWER: ['org:read', 'member:read', 'project:read'],
+  OWNER: ADMIN,
+  ADMIN,
+  ML_ENGINEER: WRITE,
+  VIEWER: READ,
 };
 
 export function sessionAs(role: Role): Session {

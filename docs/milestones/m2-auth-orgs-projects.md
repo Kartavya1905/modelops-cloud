@@ -1,6 +1,6 @@
 # Milestone 2 — Authentication, Organizations, Projects and Frontend Foundation
 
-> **Status: done locally on Windows 11 (2026-11-04).** CI has been extended to run every suite below, but that run happens on the next push. Until it is green on Linux, PROGRESS.md marks M2 as 🚧.
+> **Status: done (2026-11-04).** Verified locally on Windows 11 and in CI on Linux: [run 41784543609](https://github.com/Kartavya1905/modelops-cloud/actions/runs/41784543609).
 
 ![Projects page](../images/m2-projects.png)
 
@@ -163,9 +163,9 @@ Lint (strict, type-aware), Prettier, tsc for api/web/contract/e2e, `next build`,
 |---|---|
 | Two orgs; org B cannot see org A in API or UI | ✅ API: tenancy suite (11 tests). UI: e2e step 5 ("Not found") |
 | Permission matrix for every role × route | ✅ generated from `permissions.ts` |
-| Contract-drift check | ✅ locally (byte-identical regeneration); ⏳ in CI on next push |
+| Contract-drift check | ✅ locally and in CI |
 | Register → create project in a real browser | ✅ e2e |
-| Lint, typecheck, unit, integration, e2e, build | ✅ locally; ⏳ CI (quality job green in run 41783675902; stack job re-running after the concurrency fix) |
+| Lint, typecheck, unit, integration, e2e, build | ✅ locally and in CI (run 41784543609) |
 
 ## L. Completion checklist
 
@@ -180,4 +180,4 @@ Lint (strict, type-aware), Prettier, tsc for api/web/contract/e2e, `next build`,
 - [x] Web: auth pages, org shell, projects, project detail, members + invites, audit, invite acceptance, boundaries
 - [x] Unit, integration, component, e2e + axe tests
 - [x] CI extended
-- [ ] Push and get a green CI run ← next action
+- [x] Green CI run on Linux (after two fixes found by CI, see the bugs table)

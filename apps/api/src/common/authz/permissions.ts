@@ -23,6 +23,11 @@ export const PERMISSIONS = {
   'project:update': WRITERS,
   'project:archive': ADMINS,
   'audit:read': ADMINS,
+  // M3: experiments (read-only mirror of MLflow) and the model registry
+  'experiment:read': ALL,
+  'model:read': ALL,
+  'model:create': WRITERS,
+  'model:register': WRITERS,
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Permission = keyof typeof PERMISSIONS;

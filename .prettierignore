@@ -9,3 +9,8 @@ next-env.d.ts
 **/generated/**
 packages/api-contract/openapi.json
 packages/api-contract/src/schema.d.ts
+# Python virtual environments and caches (third-party code)
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache

@@ -20,7 +20,7 @@
 | tailwindcss / @tailwindcss/postcss | **4.3.3** (installed M1) | 4.3.4 blocked by release-age policy |
 | shadcn/ui | CLI at install time | Components are copied into the repo |
 | @tanstack/react-query | 5.105.x | |
-| recharts | 3.10.x | |
+| recharts | **3.10.1** (installed M3) | |
 | openapi-typescript / openapi-fetch | 7.13.x | Typed client from OpenAPI |
 | vitest | **5.1.0** (installed M1) | API uses `unplugin-swc` 2.0.0 + `@swc/core` 1.16.21 for decorator metadata |
 | @playwright/test | 1.64.x | |
@@ -42,15 +42,14 @@
 
 | Package | Version (PyPI) | Note |
 |---|---|---|
-| mlflow | 3.17.x | Aliases instead of stages |
+| mlflow (server) / mlflow-skinny (client) | **3.17.2** (installed M1 / M3) | Aliases instead of stages |
 | fastapi | 0.162.x | |
 | uvicorn | 0.54.x | |
 | pydantic | 2.14.x | |
-| onnx | 1.23.x | Checker, external data detection |
-| onnxruntime | 1.31.x | CPU build |
-| scikit-learn | 1.9.x **if supported by skl2onnx**, otherwise one minor lower | Risk R6 |
-| skl2onnx | 1.20.x | |
-| torch | 2.15.x (CPU wheel from the PyTorch CPU index) | Training only, never in serving images |
+| onnx / onnxscript | **1.23.2 / 0.7.2** (installed M3) | Checker, external-data detection; onnxscript for the torch.export-based exporter |
+| onnxruntime | **1.31.1** (installed M3) | CPU build |
+| scikit-learn / skl2onnx | **1.9.1 / 1.20.0** (installed M3) | Compatible for GradientBoosting; parity 3e-7 (risk R6) |
+| torch | **2.14.1+cpu** (installed M3) | 2.15.0 was 6 days old; training only, never in serving images |
 | evidently | 0.7.x | Drift reports (risk R5) |
 
 ## Infrastructure

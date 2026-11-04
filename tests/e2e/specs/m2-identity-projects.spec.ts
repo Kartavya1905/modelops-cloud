@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import AxeBuilder from '@axe-core/playwright';
 import { type Browser, expect, type Page, test } from '@playwright/test';
+import { expectNoSeriousA11yViolations } from '../support/a11y';
 
 /**
  * Milestone 2 vertical slice, driven exactly like a user would:
@@ -115,15 +115,7 @@ test('wrong password shows a generic error', async ({ page }) => {
 });
 
 test('key pages have no serious accessibility violations (axe)', async ({ page }) => {
-  const check = async () => {
-    const results = await new AxeBuilder({ page })
-      .withTags(['wcag2a', 'wcag2aa', 'wcag21aa'])
-      .analyze();
-    const serious = results.violations.filter(
-      (v) => v.impact === 'serious' || v.impact === 'critical',
-    );
-    expect(serious.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
-  };
+  const check = () => expectNoSeriousA11yViolations(page);
   await page.goto('/login');
   await check();
   await register(page, 'Axe Tester', `axe-${uid()}@example.com`);

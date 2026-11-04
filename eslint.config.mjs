@@ -14,6 +14,7 @@ export default tseslint.config(
       '**/node_modules/**',
       '**/next-env.d.ts',
       '**/generated/**',
+      '**/.venv/**',
       'packages/api-contract/src/schema.d.ts',
     ],
   },
@@ -36,6 +37,12 @@ export default tseslint.config(
       ],
       '@typescript-eslint/no-confusing-void-expression': ['error', { ignoreArrowShorthand: true }],
     },
+  },
+  {
+    // Response DTO classes exist for Swagger; services build them as plain object literals and
+    // spread them freely. Nothing is ever constructed with `new`, so no prototype can be lost.
+    files: ['apps/api/src/modules/**/*.service.ts'],
+    rules: { '@typescript-eslint/no-misused-spread': 'off' },
   },
   {
     files: ['**/*.mjs', '**/*.js'],

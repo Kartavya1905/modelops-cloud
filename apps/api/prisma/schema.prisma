@@ -1,4 +1,4 @@
-// ModelOps Cloud — control-plane schema (Milestone 2: identity, tenancy, projects, audit).
+// ModelOps Cloud — control-plane schema (M2: identity, tenancy, projects, audit; M3: registry).
 // Design: docs/03-data-model.md. Table and column names are snake_case in Postgres.
 // Every tenant-owned table carries org_id, and every query filters on it.
 
@@ -25,6 +25,24 @@ enum ActorType {
   SYSTEM
 }
 
+enum TaskType {
+  BINARY_CLASSIFICATION
+}
+
+/// Only frameworks whose export path produces a validated ONNX graph (ADR-0002).
+enum ModelFramework {
+  SKLEARN_ONNX
+  PYTORCH_ONNX
+}
+
+/// M3 registers versions as PENDING_VALIDATION; the M4 validator moves them on.
+enum ModelVersionStatus {
+  PENDING_VALIDATION
+  VALIDATING
+  VALIDATED
+  REJECTED
+}
+
 model User {
   id           String   @id @default(uuid()) @db.Uuid
   /// Stored lower-cased and trimmed; uniqueness is therefore case-insensitive.
@@ -39,6 +57,8 @@ model User {
   invitationsCreated  Invitation[] @relation("InvitationCreatedBy")
   invitationsAccepted Invitation[] @relation("InvitationAcceptedBy")
   projectsCreated     Project[]
+  modelsCreated       RegisteredModel[]
+  versionsCreated     ModelVersion[]
 
   @@map("users")
 }
@@ -70,10 +90,13 @@ model Organization {
   slug      String   @unique
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  memberships Membership[]
-  invitations Invitation[]
-  projects    Project[]
-  auditEvents AuditEvent[]
+  memberships      Membership[]
+  invitations      Invitation[]
+  projects         Project[]
+  auditEvents      AuditEvent[]
+  registeredModels RegisteredModel[]
+  modelVersions    ModelVersion[]
+  datasetVersions  DatasetVersion[]
 
   @@map("organizations")
 }
@@ -124,13 +147,100 @@ model Project {
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
   archivedAt  DateTime? @map("archived_at") @db.Timestamptz(3)
+  /// MLflow experiment `modelops/<org-slug>/<project-slug>`, created on first use.
+  mlflowExperimentId String? @unique @map("mlflow_experiment_id")
 
-  org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  createdBy User         @relation(fields: [createdById], references: [id])
+  org              Organization      @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  createdBy        User              @relation(fields: [createdById], references: [id])
+  registeredModels RegisteredModel[]
+  datasetVersions  DatasetVersion[]
 
   @@unique([orgId, slug])
   @@index([orgId, createdAt(sort: Desc)])
   @@map("projects")
+}
+
+/// A dataset a model was trained on, identified by the SHA-256 of its canonical bytes.
+model DatasetVersion {
+  id              String   @id @default(uuid()) @db.Uuid
+  orgId           String   @map("org_id") @db.Uuid
+  projectId       String   @map("project_id") @db.Uuid
+  name            String
+  /// Human label from the generator, e.g. `seed7-n20000`.
+  version         String
+  sha256          String   @db.Char(64)
+  rowCount        Int?     @map("row_count")
+  /// Where the bytes are, e.g. `runs:/<run-id>/dataset/train.csv`.
+  uri             String
+  generatorParams Json     @default("{}") @map("generator_params")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  org           Organization   @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  project       Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  modelVersions ModelVersion[]
+
+  @@unique([projectId, sha256])
+  @@index([orgId, createdAt(sort: Desc)])
+  @@map("dataset_versions")
+}
+
+model RegisteredModel {
+  id          String   @id @default(uuid()) @db.Uuid
+  orgId       String   @map("org_id") @db.Uuid
+  projectId   String   @map("project_id") @db.Uuid
+  slug        String
+  name        String
+  description String?
+  taskType    TaskType @default(BINARY_CLASSIFICATION) @map("task_type")
+  /// Globally unique name in the MLflow Model Registry: `<org-slug>.<project-slug>.<model-slug>`.
+  mlflowName  String   @unique @map("mlflow_name")
+  createdById String   @map("created_by_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  org       Organization   @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  project   Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy User           @relation(fields: [createdById], references: [id])
+  versions  ModelVersion[]
+
+  @@unique([projectId, slug])
+  @@index([orgId, createdAt(sort: Desc)])
+  @@map("registered_models")
+}
+
+/// An immutable, numbered version of a registered model, pointing at one MLflow run's bundle.
+model ModelVersion {
+  id                       String             @id @default(uuid()) @db.Uuid
+  orgId                    String             @map("org_id") @db.Uuid
+  modelId                  String             @map("model_id") @db.Uuid
+  version                  Int
+  framework                ModelFramework
+  status                   ModelVersionStatus @default(PENDING_VALIDATION)
+  mlflowRunId              String             @map("mlflow_run_id")
+  /// Version number in the MLflow registry mirror; null until the mirror call succeeds.
+  mlflowVersion            String?            @map("mlflow_version")
+  /// e.g. `mlflow-artifacts:/7/<run-id>/artifacts/model`. M4 copies it to content-addressed storage.
+  sourceUri                String             @map("source_uri")
+  /// SHA-256 reported by the training run; M4 recomputes and verifies it.
+  reportedSha256           String?            @map("reported_sha256") @db.Char(64)
+  signature                Json
+  /// Snapshot of the run's metrics at registration time.
+  metrics                  Json               @default("{}")
+  trainingDatasetVersionId String?            @map("training_dataset_version_id") @db.Uuid
+  parentVersionId          String?            @map("parent_version_id") @db.Uuid
+  createdById              String             @map("created_by_id") @db.Uuid
+  createdAt                DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  org             Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  model           RegisteredModel @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  trainingDataset DatasetVersion? @relation(fields: [trainingDatasetVersionId], references: [id])
+  parent          ModelVersion?   @relation("Lineage", fields: [parentVersionId], references: [id])
+  children        ModelVersion[]  @relation("Lineage")
+  createdBy       User            @relation(fields: [createdById], references: [id])
+
+  @@unique([modelId, version])
+  @@unique([modelId, mlflowRunId])
+  @@index([orgId, createdAt(sort: Desc)])
+  @@map("model_versions")
 }
 
 /// Append-only: a trigger in the migration rejects UPDATE and DELETE.

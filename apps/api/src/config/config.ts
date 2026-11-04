@@ -21,6 +21,8 @@ const ConfigSchema = z.object({
   MO_COOKIE_SECURE: booleanString('false'),
   MO_WEB_URL: z.url().default('http://127.0.0.1:3300'),
   MO_API_DOCS: booleanString('true'),
+  MO_MLFLOW_URL: z.url({ protocol: /^https?$/ }).default('http://127.0.0.1:15000'),
+  MO_MLFLOW_TIMEOUT_MS: z.coerce.number().int().min(500).max(60_000).default(10_000),
 });
 
 export interface AppConfig {
@@ -34,6 +36,8 @@ export interface AppConfig {
   cookieSecure: boolean;
   webUrl: string;
   apiDocsEnabled: boolean;
+  mlflowUrl: string;
+  mlflowTimeoutMs: number;
 }
 
 export const APP_CONFIG = Symbol('APP_CONFIG');
@@ -62,5 +66,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     cookieSecure: c.MO_COOKIE_SECURE,
     webUrl: c.MO_WEB_URL,
     apiDocsEnabled: c.MO_API_DOCS,
+    mlflowUrl: c.MO_MLFLOW_URL.replace(/\/+$/, ''),
+    mlflowTimeoutMs: c.MO_MLFLOW_TIMEOUT_MS,
   };
 }

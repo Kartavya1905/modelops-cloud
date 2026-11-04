@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ALL_PERMISSIONS, can, type Permission } from '../../src/common/authz/permissions';
 import type { Role } from '../../src/generated/prisma/client';
 import { addMember, Client, createTestApp, prismaOf, type Problem, uniqueEmail } from './helpers';
+import { createRun } from './mlflow-fixtures';
 
 /**
  * Role x route matrix, generated from src/common/authz/permissions.ts.
@@ -15,6 +16,10 @@ interface Ctx {
   orgId: string;
   projectId: string;
   targetUserId: string;
+  experimentId: string;
+  runIds: [string, string];
+  modelId: string;
+  versionId: string;
   as: Client;
 }
 interface RouteCase {
@@ -89,12 +94,72 @@ const ROUTES: RouteCase[] = [
     permission: 'audit:read',
     call: (c) => c.as.get(`/orgs/${c.orgId}/audit-events`),
   },
+  // ---- M3: experiments + registry
+  {
+    name: 'GET experiment',
+    permission: 'experiment:read',
+    call: (c) => c.as.get(`/orgs/${c.orgId}/projects/${c.projectId}/experiment`),
+  },
+  {
+    name: 'GET runs',
+    permission: 'experiment:read',
+    call: (c) => c.as.get(`/orgs/${c.orgId}/projects/${c.projectId}/runs`),
+  },
+  {
+    name: 'GET run',
+    permission: 'experiment:read',
+    call: (c) => c.as.get(`/orgs/${c.orgId}/projects/${c.projectId}/runs/${c.runIds[0]}`),
+  },
+  {
+    name: 'GET runs/compare',
+    permission: 'experiment:read',
+    call: (c) =>
+      c.as.get(`/orgs/${c.orgId}/projects/${c.projectId}/runs/compare?ids=${c.runIds.join(',')}`),
+  },
+  {
+    name: 'GET models',
+    permission: 'model:read',
+    call: (c) => c.as.get(`/orgs/${c.orgId}/projects/${c.projectId}/models`),
+  },
+  {
+    name: 'GET model',
+    permission: 'model:read',
+    call: (c) => c.as.get(`/orgs/${c.orgId}/models/${c.modelId}`),
+  },
+  {
+    name: 'GET model version',
+    permission: 'model:read',
+    call: (c) => c.as.get(`/orgs/${c.orgId}/model-versions/${c.versionId}`),
+  },
+  {
+    name: 'GET datasets',
+    permission: 'model:read',
+    call: (c) => c.as.get(`/orgs/${c.orgId}/projects/${c.projectId}/datasets`),
+  },
+  {
+    name: 'POST model',
+    permission: 'model:create',
+    call: (c) =>
+      c.as.post(`/orgs/${c.orgId}/projects/${c.projectId}/models`, {
+        name: `Matrix model ${String(++counter)}`,
+      }),
+  },
+  {
+    name: 'POST version import',
+    permission: 'model:register',
+    // a fresh run each time, so an allowed role never hits RUN_ALREADY_REGISTERED
+    call: async (c) =>
+      c.as.post(`/orgs/${c.orgId}/models/${c.modelId}/versions/import`, {
+        runId: await createRun(c.experimentId),
+      }),
+  },
 ];
 
 let app: NestExpressApplication;
 let orgId: string;
 let projectId: string;
 let target: Client;
+let m3: Pick<Ctx, 'experimentId' | 'runIds' | 'modelId' | 'versionId'>;
 const members = new Map<Role, Client>();
 
 beforeAll(async () => {
@@ -112,6 +177,19 @@ beforeAll(async () => {
   projectId = (
     (await owner.post(`/orgs/${orgId}/projects`, { name: 'Matrix base' })).body as { id: string }
   ).id;
+
+  // M3 fixtures: the project's experiment, two real MLflow runs, a model and one version.
+  const exp = await owner.get(`/orgs/${orgId}/projects/${projectId}/experiment`);
+  const experimentId = (exp.body as { experimentId: string }).experimentId;
+  const runIds: [string, string] = [await createRun(experimentId), await createRun(experimentId)];
+  const model = await owner.post(`/orgs/${orgId}/projects/${projectId}/models`, {
+    name: 'Matrix registry',
+  });
+  const modelId = (model.body as { id: string }).id;
+  const version = await owner.post(`/orgs/${orgId}/models/${modelId}/versions/import`, {
+    runId: runIds[0],
+  });
+  m3 = { experimentId, runIds, modelId, versionId: (version.body as { id: string }).id };
 });
 afterAll(async () => {
   await app.close();
@@ -128,7 +206,7 @@ describe.each(ROLES)('as %s', (role) => {
   it.each(ROUTES.map((r) => [r.name, r] as const))('%s', async (_name, route) => {
     const as = members.get(role);
     if (!as) throw new Error(`no ${role} client`);
-    const res = await route.call({ orgId, projectId, targetUserId: target.userId, as });
+    const res = await route.call({ orgId, projectId, targetUserId: target.userId, as, ...m3 });
     if (can(role, route.permission)) {
       expect(res.status, `${role} should be allowed ${route.permission}: ${res.text}`).toBeLessThan(
         400,

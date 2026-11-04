@@ -26,8 +26,8 @@ Legend: ✅ done · 🚧 in progress · ⬜ not started
 | # | Milestone | Status | Acceptance evidence |
 |---|---|---|---|
 | M1 | Repository and local environment | ✅ | [m1-local-environment.md](docs/milestones/m1-local-environment.md): smoke 17/17, unit 25/25 (2026-11-03); **CI green on Linux**: [run 41775591802](https://github.com/Kartavya1905/modelops-cloud/actions/runs/41775591802) |
-| M2 | Auth, orgs, projects, frontend foundation | 🚧 done locally; CI run pending push | [m2-auth-orgs-projects.md](docs/milestones/m2-auth-orgs-projects.md): unit 33 + 27, integration 88/88, e2e 4/4 incl. axe, smoke 17/17 (2026-11-04) |
-| M3 | MLflow, registry, experiments | ⬜ | — |
+| M2 | Auth, orgs, projects, frontend foundation | ✅ | [m2-auth-orgs-projects.md](docs/milestones/m2-auth-orgs-projects.md): unit 33 + 27, integration 88/88, e2e 4/4 incl. axe, smoke 17/17 (2026-11-04); **CI green on Linux**: [run 41784543609](https://github.com/Kartavya1905/modelops-cloud/actions/runs/41784543609) |
+| M3 | MLflow, registry, experiments | 🚧 done locally; CI run pending push | [m3-experiments-registry.md](docs/milestones/m3-experiments-registry.md): ML 32, unit 54 + 35, integration 142/142, e2e 5/5 with real training (2026-11-04) |
 | M4 | Model validation and artifact storage | ⬜ | — |
 | M5 | Inference deployment pipeline | ⬜ | — |
 | M6 | Playground and operational dashboard | ⬜ | — |
@@ -41,7 +41,7 @@ Legend: ✅ done · 🚧 in progress · ⬜ not started
 ## Local prerequisites
 - [x] Node 24.22.2 via fnm (add fnm to your PowerShell profile, see docs/10)
 - [x] pnpm 12.16.1 (installed with npm; `corepack enable` failed on this machine)
-- [x] uv 0.13.7
+- [x] uv 0.13.7 (now required: `uv sync --directory ml`)
 - [ ] Docker Desktop WSL2 memory ≥ 12 GB (`.wslconfig`): optional, the stack currently uses ~0.7 GB
 - [ ] `git config --global core.autocrlf input`: optional, the repo enforces LF via `.gitattributes`
 
@@ -51,7 +51,9 @@ Legend: ✅ done · 🚧 in progress · ⬜ not started
 - [x] Prisma 7.x vs 8.0 → **7.10.1 stable** (8.0 still RC on 2026-11-04), risk R4
 - [x] Dependency age rule → newest stable **≥ 7 days old** (ADR-0007 addendum 2)
 - [x] Outbox + idempotency tables → deferred from M2 to **M5**, where they are first used
+- [x] scikit-learn ONNX parity (risk R6) → scaler removed from the GBM pipeline; parity 3e-7
+- [x] MLflow aliases (`champion`/`challenger`) → deferred to **M7** with the evaluation gate
 
 ## Next actions
-1. Commit and push M2, then get a green CI run (closes M2)
-2. Start M3: MLflow integration, experiments and model registry
+1. Commit and push M3, then get a green CI run (closes M3)
+2. Start M4: model validation and artifact storage

@@ -22,6 +22,8 @@ import {
   Label,
   Textarea,
 } from '@/components/ui/primitives';
+import { ModelsSection } from '@/features/ml/models-section';
+import { RunsSection } from '@/features/ml/runs-section';
 import { useOrgId } from '@/features/org/org-shell';
 import { api, ApiError, unwrap } from '@/lib/api/client';
 import { useCan } from '@/lib/auth/session';
@@ -189,16 +191,9 @@ export function ProjectDetailPage() {
           )
         }
       />
+      <RunsSection orgId={orgId} projectId={project.id} />
+      <ModelsSection orgId={orgId} projectId={project.id} />
       <EditProjectForm key={project.updatedAt} orgId={orgId} project={project} />
-      <Card>
-        <CardHeader>
-          <CardTitle>Experiments, models and endpoints</CardTitle>
-          <CardDescription>
-            Coming in Milestone 3 (MLflow experiments and the model registry).
-          </CardDescription>
-        </CardHeader>
-        <CardContent />
-      </Card>
       <ConfirmDialog
         open={confirmOpen}
         onOpenChange={setConfirmOpen}

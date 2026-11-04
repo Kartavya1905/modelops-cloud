@@ -7,8 +7,11 @@ import { ConfigModule } from './config/config.module';
 import { HealthModule } from './health/health.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { ExperimentsModule } from './modules/experiments/experiments.module';
+import { MlflowModule } from './modules/mlflow/mlflow.module';
 import { OrganizationsModule } from './modules/organizations/organizations.module';
 import { ProjectsModule } from './modules/projects/projects.module';
+import { RegistryModule } from './modules/registry/registry.module';
 
 /**
  * Modular monolith (ADR-0001). Infrastructure modules are global; feature modules talk to
@@ -24,6 +27,9 @@ import { ProjectsModule } from './modules/projects/projects.module';
     HealthModule,
     OrganizationsModule,
     ProjectsModule,
+    MlflowModule,
+    ExperimentsModule,
+    RegistryModule,
   ],
   providers: [{ provide: APP_FILTER, useClass: ProblemFilter }],
 })

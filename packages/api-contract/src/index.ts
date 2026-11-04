@@ -14,3 +14,15 @@ export type AuditEvent = Schemas['AuditEventDto'];
 export type AuditPage = Schemas['AuditPageDto'];
 export type Role = Member['role'];
 export type Permission = Session['memberships'][number]['permissions'][number];
+// M3: experiments + registry
+export type Experiment = Schemas['ExperimentDto'];
+export type Run = Schemas['RunDto'];
+export type RunDetail = Schemas['RunDetailDto'];
+export type RunPage = Schemas['RunPageDto'];
+export type RunComparison = Schemas['RunComparisonDto'];
+export type Model = Schemas['ModelDto'];
+export type ModelDetail = Schemas['ModelDetailDto'];
+export type ModelVersion = Schemas['ModelVersionDto'];
+export type ModelVersionSummary = Schemas['ModelVersionSummaryDto'];
+export type DatasetVersion = Schemas['DatasetVersionDto'];
+export type Signature = Schemas['SignatureDto'];

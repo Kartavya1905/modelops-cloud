@@ -29,6 +29,8 @@ async function bootWith(checks: DependencyCheck[]): Promise<INestApplication> {
     cookieSecure: false,
     webUrl: 'http://127.0.0.1:3300',
     apiDocsEnabled: false,
+    mlflowUrl: 'http://127.0.0.1:15000',
+    mlflowTimeoutMs: 1000,
   };
   const moduleRef = await Test.createTestingModule({
     controllers: [HealthController],

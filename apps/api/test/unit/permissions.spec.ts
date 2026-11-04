@@ -3,12 +3,14 @@ import { describe, expect, it } from 'vitest';
 import { OrgAccessGuard, PERMISSION_KEY } from '../../src/common/authz/org-access.guard';
 import { can, PERMISSIONS, permissionsFor } from '../../src/common/authz/permissions';
 import { AuditController } from '../../src/modules/audit/audit.controller';
+import { ExperimentsController } from '../../src/modules/experiments/experiments.controller';
 import {
   MembersController,
   OrganizationsController,
   OrgInvitationsController,
 } from '../../src/modules/organizations/organizations.controller';
 import { ProjectsController } from '../../src/modules/projects/projects.controller';
+import { RegistryController } from '../../src/modules/registry/registry.controller';
 
 describe('permission table', () => {
   it('Owner holds every permission; Viewer holds only read permissions', () => {
@@ -44,6 +46,8 @@ describe('every org-scoped route declares a permission', () => {
     OrgInvitationsController,
     ProjectsController,
     AuditController,
+    ExperimentsController,
+    RegistryController,
   ];
 
   const guarded = (target: object): boolean => {

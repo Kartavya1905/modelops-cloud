@@ -228,6 +228,54 @@ export interface paths {
         patch: operations["Members_changeRole"];
         trace?: never;
     };
+    "/api/v1/orgs/{orgId}/model-versions/{versionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["Registry_getVersion"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orgs/{orgId}/models/{modelId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["Registry_getModel"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orgs/{orgId}/models/{modelId}/versions/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["Registry_importVersion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/orgs/{orgId}/projects": {
         parameters: {
             query?: never;
@@ -258,6 +306,102 @@ export interface paths {
         options?: never;
         head?: never;
         patch: operations["Projects_update"];
+        trace?: never;
+    };
+    "/api/v1/orgs/{orgId}/projects/{projectId}/datasets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["Registry_datasets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orgs/{orgId}/projects/{projectId}/experiment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["Experiments_experiment"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orgs/{orgId}/projects/{projectId}/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["Registry_listModels"];
+        put?: never;
+        post: operations["Registry_createModel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orgs/{orgId}/projects/{projectId}/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["Experiments_runs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orgs/{orgId}/projects/{projectId}/runs/{runId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["Experiments_run"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orgs/{orgId}/projects/{projectId}/runs/compare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["Experiments_compare"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
 }
@@ -323,6 +467,11 @@ export interface components {
             /** @enum {string} */
             role: "OWNER" | "ADMIN" | "ML_ENGINEER" | "VIEWER";
         };
+        CreateModelDto: {
+            description?: string;
+            /** @example Churn classifier */
+            name: string;
+        };
         CreateOrgDto: {
             /** @example Acme ML */
             name: string;
@@ -331,6 +480,37 @@ export interface components {
             description?: string;
             /** @example Customer churn */
             name: string;
+        };
+        DatasetRefDto: {
+            name: string;
+            sha256: string;
+            version: string;
+        };
+        DatasetVersionDto: {
+            /** Format: date-time */
+            createdAt: string;
+            generatorParams: {
+                [key: string]: string;
+            };
+            /** Format: uuid */
+            id: string;
+            name: string;
+            rowCount: number | null;
+            sha256: string;
+            uri: string;
+            version: string;
+        };
+        ExperimentDto: {
+            /** @description MLflow experiment id */
+            experimentId: string;
+            /** @example modelops/acme-1a2b3c/customer-churn */
+            name: string;
+            /** @description Commands that train into this experiment */
+            trainCommands: string[];
+        };
+        ImportVersionDto: {
+            /** @description MLflow run id in this project’s experiment */
+            runId: string;
         };
         InvitationDto: {
             /** Format: date-time */
@@ -372,9 +552,98 @@ export interface components {
             orgName: string;
             orgSlug: string;
             /** @description For UI hints only. */
-            permissions: ("org:read" | "member:read" | "member:manage" | "invitation:create" | "project:read" | "project:create" | "project:update" | "project:archive" | "audit:read")[];
+            permissions: ("org:read" | "member:read" | "member:manage" | "invitation:create" | "project:read" | "project:create" | "project:update" | "project:archive" | "audit:read" | "experiment:read" | "model:read" | "model:create" | "model:register")[];
             /** @enum {string} */
             role: "OWNER" | "ADMIN" | "ML_ENGINEER" | "VIEWER";
+        };
+        MetricPointDto: {
+            step: number;
+            value: number;
+        };
+        ModelDetailDto: {
+            /** Format: date-time */
+            createdAt: string;
+            description: string | null;
+            /** Format: uuid */
+            id: string;
+            latestVersion: components["schemas"]["ModelVersionSummaryDto"] | null;
+            /** @description Name in the MLflow Model Registry */
+            mlflowName: string;
+            name: string;
+            project: components["schemas"]["ProjectRefDto"];
+            /** Format: uuid */
+            projectId: string;
+            slug: string;
+            /** @enum {string} */
+            taskType: "BINARY_CLASSIFICATION";
+            versionCount: number;
+            versions: components["schemas"]["ModelVersionSummaryDto"][];
+        };
+        ModelDto: {
+            /** Format: date-time */
+            createdAt: string;
+            description: string | null;
+            /** Format: uuid */
+            id: string;
+            latestVersion: components["schemas"]["ModelVersionSummaryDto"] | null;
+            /** @description Name in the MLflow Model Registry */
+            mlflowName: string;
+            name: string;
+            /** Format: uuid */
+            projectId: string;
+            slug: string;
+            /** @enum {string} */
+            taskType: "BINARY_CLASSIFICATION";
+            versionCount: number;
+        };
+        ModelRefDto: {
+            /** Format: uuid */
+            id: string;
+            mlflowName: string;
+            name: string;
+            project: components["schemas"]["ProjectRefDto"];
+        };
+        ModelVersionDto: {
+            /** Format: date-time */
+            createdAt: string;
+            /** @enum {string} */
+            framework: "SKLEARN_ONNX" | "PYTORCH_ONNX";
+            /** Format: uuid */
+            id: string;
+            metrics: {
+                [key: string]: number;
+            };
+            mlflowRunId: string;
+            /** @description Set when the MLflow mirror failed */
+            mlflowSyncError: string | null;
+            /** @description Null until mirrored to MLflow */
+            mlflowVersion: string | null;
+            model: components["schemas"]["ModelRefDto"];
+            /** @description Reported by training; verified in M4 */
+            reportedSha256: string | null;
+            signature: components["schemas"]["SignatureDto"];
+            sourceUri: string;
+            /** @enum {string} */
+            status: "PENDING_VALIDATION" | "VALIDATING" | "VALIDATED" | "REJECTED";
+            trainingDataset: components["schemas"]["DatasetVersionDto"] | null;
+            version: number;
+        };
+        ModelVersionSummaryDto: {
+            /** Format: date-time */
+            createdAt: string;
+            /** @enum {string} */
+            framework: "SKLEARN_ONNX" | "PYTORCH_ONNX";
+            /** Format: uuid */
+            id: string;
+            metrics: {
+                [key: string]: number;
+            };
+            mlflowRunId: string;
+            /** @description Null until mirrored to MLflow */
+            mlflowVersion: string | null;
+            /** @enum {string} */
+            status: "PENDING_VALIDATION" | "VALIDATING" | "VALIDATED" | "REJECTED";
+            version: number;
         };
         OrgDto: {
             /** Format: date-time */
@@ -412,6 +681,12 @@ export interface components {
             data: components["schemas"]["ProjectDto"][];
             nextCursor: string | null;
         };
+        ProjectRefDto: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            slug: string;
+        };
         RegisterDto: {
             /** @example ada@example.com */
             email: string;
@@ -420,11 +695,95 @@ export interface components {
             /** @description At least 12 characters. */
             password: string;
         };
+        RegisteredAsDto: {
+            /** Format: uuid */
+            modelId: string;
+            modelName: string;
+            version: number;
+            /** Format: uuid */
+            versionId: string;
+        };
+        RunComparisonDto: {
+            /** @description Params whose value differs between runs */
+            differingParams: string[];
+            /** @description Union of metric keys, sorted */
+            metricKeys: string[];
+            runs: components["schemas"]["RunDetailDto"][];
+        };
+        RunDetailDto: {
+            dataset: components["schemas"]["DatasetRefDto"] | null;
+            durationMs: number | null;
+            /** Format: date-time */
+            endTime: string | null;
+            /** @enum {string|null} */
+            framework: "SKLEARN_ONNX" | "PYTORCH_ONNX" | null;
+            metrics: {
+                [key: string]: number;
+            };
+            name: string;
+            params: {
+                [key: string]: string;
+            };
+            registeredAs: components["schemas"]["RegisteredAsDto"][];
+            runId: string;
+            /** @description Per-step history for metrics logged more than once (e.g. train_loss) */
+            series: {
+                [key: string]: components["schemas"]["MetricPointDto"][];
+            };
+            /** Format: date-time */
+            startTime: string | null;
+            /** @enum {string} */
+            status: "RUNNING" | "SCHEDULED" | "FINISHED" | "FAILED" | "KILLED";
+            /** @description modelops.* tags */
+            tags: {
+                [key: string]: string;
+            };
+        };
+        RunDto: {
+            dataset: components["schemas"]["DatasetRefDto"] | null;
+            durationMs: number | null;
+            /** Format: date-time */
+            endTime: string | null;
+            /** @enum {string|null} */
+            framework: "SKLEARN_ONNX" | "PYTORCH_ONNX" | null;
+            metrics: {
+                [key: string]: number;
+            };
+            name: string;
+            params: {
+                [key: string]: string;
+            };
+            registeredAs: components["schemas"]["RegisteredAsDto"][];
+            runId: string;
+            /** Format: date-time */
+            startTime: string | null;
+            /** @enum {string} */
+            status: "RUNNING" | "SCHEDULED" | "FINISHED" | "FAILED" | "KILLED";
+        };
+        RunPageDto: {
+            data: components["schemas"]["RunDto"][];
+            nextCursor: string | null;
+        };
         SessionDto: {
             /** @description Send as X-CSRF-Token on POST/PUT/PATCH/DELETE. */
             csrfToken: string;
             memberships: components["schemas"]["MembershipSummaryDto"][];
             user: components["schemas"]["UserDto"];
+        };
+        SignatureDto: {
+            inputs: components["schemas"]["TensorSpecDto"][];
+            outputs: components["schemas"]["TensorSpecDto"][];
+            signatureVersion: number;
+            /** @enum {string} */
+            task: "binary_classification";
+        };
+        TensorSpecDto: {
+            classes?: (number | string)[];
+            /** @enum {string} */
+            dtype: "float32" | "float64" | "int32" | "int64" | "bool";
+            features?: string[];
+            name: string;
+            shape: number[];
         };
         UpdateProjectDto: {
             description?: string | null;
@@ -820,6 +1179,77 @@ export interface operations {
             };
         };
     };
+    Registry_getVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                versionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelVersionDto"];
+                };
+            };
+        };
+    };
+    Registry_getModel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                modelId: string;
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelDetailDto"];
+                };
+            };
+        };
+    };
+    Registry_importVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                modelId: string;
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportVersionDto"];
+            };
+        };
+        responses: {
+            /** @description Registers a finished MLflow run of this project as the next version (PENDING_VALIDATION). */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelVersionDto"];
+                };
+            };
+        };
+    };
     Projects_list: {
         parameters: {
             query?: {
@@ -938,6 +1368,174 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProjectDto"];
+                };
+            };
+        };
+    };
+    Registry_datasets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetVersionDto"][];
+                };
+            };
+        };
+    };
+    Experiments_experiment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Created in MLflow on first request. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExperimentDto"];
+                };
+            };
+        };
+    };
+    Registry_listModels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelDto"][];
+                };
+            };
+        };
+    };
+    Registry_createModel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateModelDto"];
+            };
+        };
+        responses: {
+            /** @description Also created in the MLflow Model Registry. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelDto"];
+                };
+            };
+        };
+    };
+    Experiments_runs: {
+        parameters: {
+            query?: {
+                /** @description Opaque cursor from a previous page’s `nextCursor`. */
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                orgId: string;
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunPageDto"];
+                };
+            };
+        };
+    };
+    Experiments_run: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                projectId: string;
+                runId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunDetailDto"];
+                };
+            };
+        };
+    };
+    Experiments_compare: {
+        parameters: {
+            query: {
+                /** @description Comma-separated MLflow run ids (2–5) */
+                ids: string[];
+            };
+            header?: never;
+            path: {
+                orgId: string;
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunComparisonDto"];
                 };
             };
         };

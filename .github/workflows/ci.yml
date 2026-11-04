@@ -44,9 +44,28 @@ jobs:
             exit 1
           }
 
+  ml:
+    name: ML training code (ruff · pytest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: ml
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+          cache-dependency-glob: ml/uv.lock
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      # Includes the pinned dataset hash test: proves the synthetic data is byte-identical on Linux.
+      - run: uv run pytest
+
   stack:
     name: integration · smoke · e2e
-    needs: quality
+    needs: [quality, ml]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -84,6 +103,14 @@ jobs:
 
       - name: Smoke test
         run: pnpm test:smoke
+
+      - uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+          cache-dependency-glob: ml/uv.lock
+
+      - name: Install the ML environment (the M3 e2e test trains real models)
+        run: uv sync --frozen --directory ml
 
       - name: Browser end-to-end tests (Playwright + axe)
         run: |

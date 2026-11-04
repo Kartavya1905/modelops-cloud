@@ -3,6 +3,8 @@ node_modules/
 .pnpm-store/
 .venv/
 __pycache__/
+.pytest_cache/
+.ruff_cache/
 *.pyc
 
 # Build output

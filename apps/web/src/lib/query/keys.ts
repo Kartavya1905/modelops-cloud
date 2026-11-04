@@ -14,4 +14,16 @@ export const qk = {
   invitations: (orgId: string) => ['orgs', orgId, 'invitations'] as const,
   audit: (orgId: string, action: string) => ['orgs', orgId, 'audit', { action }] as const,
   invitation: (token: string) => ['invitation', token] as const,
+  // M3
+  experiment: (orgId: string, projectId: string) =>
+    ['orgs', orgId, 'projects', projectId, 'experiment'] as const,
+  runs: (orgId: string, projectId: string) =>
+    ['orgs', orgId, 'projects', projectId, 'runs'] as const,
+  compare: (orgId: string, projectId: string, ids: string[]) =>
+    ['orgs', orgId, 'projects', projectId, 'runs', 'compare', ids] as const,
+  models: (orgId: string, projectId: string) =>
+    ['orgs', orgId, 'projects', projectId, 'models'] as const,
+  model: (orgId: string, modelId: string) => ['orgs', orgId, 'models', modelId] as const,
+  modelVersion: (orgId: string, versionId: string) =>
+    ['orgs', orgId, 'model-versions', versionId] as const,
 };

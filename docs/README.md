@@ -25,6 +25,7 @@ Phase 0 design set. Read in order for the full picture, or jump to what an inter
 |---|---|
 | M1 | [Repository and local environment](milestones/m1-local-environment.md) |
 | M2 | [Authentication, organizations, projects, frontend foundation](milestones/m2-auth-orgs-projects.md) |
+| M3 | [MLflow integration, experiments and model registry](milestones/m3-experiments-registry.md) |
 
 ## Architecture Decision Records
 
@@ -46,4 +47,6 @@ Phase 0 design set. Read in order for the full picture, or jump to what an inter
 | MinIO | SeaweedFS (S3 API) | MinIO CE no longer ships images or patches (ADR-0003) |
 | Optional AWS deployment | Terraform validated, never applied | Zero-cost constraint (ADR-0008) |
 | "Latest versions" | Latest **stable and ≥ 7 days old**; Prisma 7.x not 8.0 RC; Node 24 LTS; TypeScript 6 | ADR-0007 |
+| `Pipeline(StandardScaler → GBM)` | GBM without scaler | The scaler broke ONNX parity (4.3e-2); trees are scale-invariant (M3 doc) |
+| MLflow aliases in M3 | Deferred to M7 | `champion` requires the evaluation gate (M3 doc) |
 | shadcn/ui (CLI) | shadcn-style components written into the repo (Radix + cva) | CLI installs just-published versions that the release-age policy blocks (M2 doc) |

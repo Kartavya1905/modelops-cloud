@@ -35,7 +35,9 @@ export function Providers({ children }: { children: ReactNode }) {
   return (
     <QueryClientProvider client={client}>
       {children}
-      <Toaster theme="system" richColors closeButton position="bottom-right" />
+      {/* No richColors: its green-on-green success style fails WCAG AA contrast (found by axe in M3). */}
+      {/* One toast at a time: stacked toasts are dimmed behind the newest, which fails contrast. */}
+      <Toaster theme="system" closeButton visibleToasts={1} position="bottom-right" />
     </QueryClientProvider>
   );
 }
