@@ -28,7 +28,7 @@ M2 builds that foundation and the web app shell around it:
 | **Login limiter: 5 failures/min per (IP, email)**, Redis, **fails open** | Brute-force protection without letting a Redis outage lock everyone out (Argon2's cost still slows guessing). Keys are HMACs, so Redis never holds emails or IPs |
 | **`OrgAccessGuard`**: `:orgId` must be your org → else **404**; route must declare a permission → else **403** | Cross-tenant ids are indistinguishable from non-existent ones (SEC-7). Deny-by-default catches a forgotten decorator |
 | **One permission table** (`apps/api/src/common/authz/permissions.ts`) | The guard enforces it, `/auth/me` sends it to the UI, and the integration test **generates its role × route matrix from it** |
-| **Owner rules in a transaction with `SELECT … FOR UPDATE` on the org** | Two owners demoting each other concurrently can never leave zero owners (tested) |
+| **Membership changes lock the org row (`SELECT … FOR UPDATE`) and re-read the caller's role inside the transaction** | Two owners demoting each other can never leave zero owners, and a caller demoted mid-request cannot act with their stale role (both tested) |
 | **Invitations bound to an email, single-use by compare-and-set** | A leaked link is useless to anyone else; double-clicks or races can't create two memberships (tested). No email is sent (zero cost): the UI shows a one-time link |
 | **Audit log append-only in Postgres** (trigger rejects UPDATE/DELETE/TRUNCATE) and written **inside the same transaction** as the change | History can't be rewritten even by a buggy script; an audit row exists if and only if the change committed |
 | **RFC 9457 problem+json for every error**, including unknown 500s (no stack traces) | One error shape for UI and API clients; `requestId` ties a user-visible error to server logs |
@@ -92,7 +92,7 @@ Open http://127.0.0.1:3300, create an account, and you land in your personal wor
 | Suite | Count | Highlights | Run |
 |---|---|---|---|
 | API unit | 33 | Config validation, health, permission table (roles strictly nested), **every org-scoped handler declares a permission** (static scan) | `pnpm --filter @modelops/api test` |
-| API integration (real Postgres + Redis) | 87 | Listed below | `pnpm test:integration` |
+| API integration (real Postgres + Redis) | 88 | Listed below | `pnpm test:integration` |
 | Web component | 27 | Permission gate; login validation, 401, 429, success redirect, **open-redirect rejection**; projects empty/list/error states; slug-conflict shown on the field; CSRF header sent | `pnpm --filter @modelops/web test` |
 | Browser end-to-end (Playwright) | 4 | Full multi-user journey; signed-out redirect; generic login error; **axe: no serious/critical WCAG A/AA violations** on login and projects | `pnpm test:e2e` |
 | Smoke | 17 | Unchanged from M1, still green with M2 code | `pnpm test:smoke` |
@@ -103,7 +103,8 @@ Integration highlights (security test IDs from [docs/06](../06-security.md#7-adv
 - **SEC-12 (CSRF):** a missing or altered token → 403.
 - **SEC-16 (brute force):** the 6th failure → 429 with `Retry-After`, and even the right password is blocked during the window.
 - **Concurrency:**
-  - two owners demoting each other → exactly one 200, one 409, ≥ 1 owner left
+  - two owners demoting each other → exactly one 200, one 403 `OWNER_REQUIRED`, exactly 1 owner left
+  - a member demoted mid-request → their change only succeeds if it committed before the demotion
   - two simultaneous accepts of one invite → exactly one membership
 - **Data protection:** the password is stored as Argon2id; the cookie token appears in the DB only as its SHA-256; audit rows contain no passwords, tokens or raw IPs.
 - **Audit integrity:** raw `UPDATE`, `DELETE` and `TRUNCATE` on `audit_events` are rejected by the database.
@@ -114,7 +115,7 @@ Integration highlights (security test IDs from [docs/06](../06-security.md#7-adv
 ```text
 API unit           Test Files 4 passed (4)   Tests 33 passed (33)
 Web component      Test Files 4 passed (4)   Tests 27 passed (27)
-API integration    Test Files 5 passed (5)   Tests 87 passed (87)   Duration 12.72s
+API integration    Test Files 5 passed (5)   Tests 88 passed (88)   (3 consecutive runs, after the CI fix below)
 E2E (Playwright)   4 passed (9.8s)
 Smoke              17/17 checks passed
 Lint (strict, type-aware), Prettier, tsc for api/web/contract/e2e, `next build`, contract regenerates byte-identical: all pass
@@ -131,6 +132,8 @@ Lint (strict, type-aware), Prettier, tsc for api/web/contract/e2e, `next build`,
 | E2E | Dev assets blocked for `127.0.0.1` (Next 16 dev-origin protection), so React never hydrated | `allowedDevOrigins: ['127.0.0.1']` (dev only) |
 | E2E | "Create one" on the login page dropped `?next=`, so an invitee who signed up lost the invite | Link keeps `next`; the e2e test asserts it |
 | Dev experience | API dev server restarted on any repo file change (`--watch-path` on Windows) | `node --watch` follows the import graph only |
+| **First Linux CI run** | `pnpm test` also ran the Playwright suite (script named `test`), which needs running servers | Script renamed `e2e`; browser tests run only in the stack job |
+| **Linux CI, concurrency test** | Owner rules used the caller's role read by the guard *before* the transaction (time-of-check/time-of-use). The outcome of concurrent demotions depended on timing, and a just-demoted Owner could still act as Owner | Lock the org row first, then re-read caller and target roles under the lock; the test now asserts the deterministic outcome |
 
 ## I. Expected behaviour
 
@@ -162,7 +165,7 @@ Lint (strict, type-aware), Prettier, tsc for api/web/contract/e2e, `next build`,
 | Permission matrix for every role × route | ✅ generated from `permissions.ts` |
 | Contract-drift check | ✅ locally (byte-identical regeneration); ⏳ in CI on next push |
 | Register → create project in a real browser | ✅ e2e |
-| Lint, typecheck, unit, integration, e2e, build | ✅ locally; ⏳ CI on next push |
+| Lint, typecheck, unit, integration, e2e, build | ✅ locally; ⏳ CI (quality job green in run 41783675902; stack job re-running after the concurrency fix) |
 
 ## L. Completion checklist
 

@@ -26,7 +26,7 @@ Legend: ✅ done · 🚧 in progress · ⬜ not started
 | # | Milestone | Status | Acceptance evidence |
 |---|---|---|---|
 | M1 | Repository and local environment | ✅ | [m1-local-environment.md](docs/milestones/m1-local-environment.md): smoke 17/17, unit 25/25 (2026-11-03); **CI green on Linux**: [run 41775591802](https://github.com/Kartavya1905/modelops-cloud/actions/runs/41775591802) |
-| M2 | Auth, orgs, projects, frontend foundation | 🚧 done locally; CI run pending push | [m2-auth-orgs-projects.md](docs/milestones/m2-auth-orgs-projects.md): unit 33 + 27, integration 87/87, e2e 4/4 incl. axe, smoke 17/17 (2026-11-04) |
+| M2 | Auth, orgs, projects, frontend foundation | 🚧 done locally; CI run pending push | [m2-auth-orgs-projects.md](docs/milestones/m2-auth-orgs-projects.md): unit 33 + 27, integration 88/88, e2e 4/4 incl. axe, smoke 17/17 (2026-11-04) |
 | M3 | MLflow, registry, experiments | ⬜ | — |
 | M4 | Model validation and artifact storage | ⬜ | — |
 | M5 | Inference deployment pipeline | ⬜ | — |

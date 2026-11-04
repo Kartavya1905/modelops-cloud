@@ -45,20 +45,52 @@ describe('owner rules', () => {
     expect(remove.status).toBe(409);
   });
 
-  it('two Owners demoting each other at the same time leave at least one Owner', async () => {
+  it('two Owners demoting each other at the same time: exactly one wins, one Owner remains', async () => {
     const a = await Client.register(app);
     const b = await Client.register(app);
     await addMember(app, a.orgId, b, 'OWNER');
 
+    // Both requests pass OrgAccessGuard as Owners. The org-row lock serializes them, and the
+    // second re-reads its caller's role inside the transaction, finds it was just demoted to
+    // Admin, and is refused, instead of acting on the stale role from the guard.
     const results = await Promise.all([
       a.patch(`/orgs/${a.orgId}/members/${b.userId}`, { role: 'ADMIN' }),
       b.patch(`/orgs/${a.orgId}/members/${a.userId}`, { role: 'ADMIN' }),
     ]);
+    const statuses = results.map((r) => r.status).sort();
+    expect(statuses).toEqual([200, 403]);
+    expect(results.map(code).filter(Boolean)).toEqual(['OWNER_REQUIRED']);
     const owners = await prismaOf(app).membership.count({
       where: { orgId: a.orgId, role: 'OWNER' },
     });
-    expect(owners).toBeGreaterThanOrEqual(1);
-    expect(results.map((r) => r.status).sort()).toEqual([200, 409]);
+    expect(owners).toBe(1);
+  });
+
+  it('a member demoted mid-flight cannot act with the role they had when the request started', async () => {
+    const owner = await Client.register(app);
+    const admin = await Client.register(app);
+    const viewer = await Client.register(app);
+    await addMember(app, owner.orgId, admin, 'ADMIN');
+    await addMember(app, owner.orgId, viewer, 'VIEWER');
+
+    // Owner demotes the Admin while the Admin tries to change someone's role, at the same time.
+    // Whatever the interleaving, the Admin's request may only succeed if it ran *before* the demotion.
+    const [demote, attempt] = await Promise.all([
+      owner.patch(`/orgs/${owner.orgId}/members/${admin.userId}`, { role: 'VIEWER' }),
+      admin.patch(`/orgs/${owner.orgId}/members/${viewer.userId}`, { role: 'ML_ENGINEER' }),
+    ]);
+    expect(demote.status).toBe(200);
+    expect([200, 403]).toContain(attempt.status);
+    const events = await prismaOf(app).auditEvent.findMany({
+      where: { orgId: owner.orgId, action: 'member.role_changed' },
+      orderBy: { id: 'asc' },
+    });
+    if (attempt.status === 200) {
+      // the Admin's change committed first, while they were still an Admin
+      expect(events.map((e) => e.targetId)).toEqual([viewer.userId, admin.userId]);
+    } else {
+      expect(events.map((e) => e.targetId)).toEqual([admin.userId]);
+    }
   });
 
   it('an Owner can hand over ownership, and the change is audited', async () => {

@@ -38,7 +38,7 @@ pnpm dev:clean     # remove containers and volumes
 
 ```bash
 pnpm test               # unit + component (33 API, 27 web)
-pnpm test:integration   # 87 tests against real Postgres + Redis (throwaway database)
+pnpm test:integration   # 88 tests against real Postgres + Redis (throwaway database)
 pnpm test:e2e           # Playwright user journeys + axe accessibility checks
 pnpm test:smoke         # 17 environment checks
 ```

@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { can } from '../../common/authz/permissions';
 import { randomToken, sha256Bytes } from '../../common/crypto';
 import { Errors } from '../../common/errors/app-error';
 import type { Tx } from '../../common/prisma/prisma.service';
@@ -121,28 +122,46 @@ export class OrganizationsService {
   }
 
   /**
+   * Serializes all membership changes in one organization and returns the caller's *current* role.
+   *
+   * The role attached by OrgAccessGuard was read before this transaction started, so it may be
+   * stale: a concurrent request could have demoted or removed the caller in between
+   * (time-of-check vs time-of-use). Locking the organization row first and re-reading the
+   * caller's membership under that lock makes every decision below use committed, current data.
+   */
+  private async lockOrgAndReadActorRole(tx: Tx, orgId: string, actorUserId: string): Promise<Role> {
+    await tx.$queryRaw`SELECT id FROM organizations WHERE id = ${orgId}::uuid FOR UPDATE`;
+    const actor = await tx.membership.findUnique({
+      where: { orgId_userId: { orgId, userId: actorUserId } },
+      select: { role: true },
+    });
+    if (!actor) throw Errors.notFound('Organization');
+    if (!can(actor.role, 'member:manage')) throw Errors.forbiddenRole('member:manage');
+    return actor.role;
+  }
+
+  /**
    * Rules (docs/06, section 3):
    *  - only an Owner may grant the Owner role, or change/remove an Owner
    *  - an organization must always keep at least one Owner
-   * The owner count is read inside the same transaction under a row lock on the org,
-   * so two concurrent demotions cannot both succeed and leave zero owners.
+   * Must be called after lockOrgAndReadActorRole, with the target read under the same lock.
    */
   private async assertOwnerRules(
     tx: Tx,
-    actor: MembershipContext,
-    target: { role: Role },
+    orgId: string,
+    actorRole: Role,
+    targetRole: Role,
     newRole: Role | null,
   ): Promise<void> {
-    const touchesOwner = target.role === 'OWNER' || newRole === 'OWNER';
-    if (touchesOwner && actor.role !== 'OWNER') {
+    const touchesOwner = targetRole === 'OWNER' || newRole === 'OWNER';
+    if (touchesOwner && actorRole !== 'OWNER') {
       throw Errors.forbidden(
         'OWNER_REQUIRED',
         'Only an Owner can grant, change or remove the Owner role.',
       );
     }
-    if (target.role === 'OWNER' && newRole !== 'OWNER') {
-      await tx.$queryRaw`SELECT id FROM organizations WHERE id = ${actor.orgId}::uuid FOR UPDATE`;
-      const owners = await tx.membership.count({ where: { orgId: actor.orgId, role: 'OWNER' } });
+    if (targetRole === 'OWNER' && newRole !== 'OWNER') {
+      const owners = await tx.membership.count({ where: { orgId, role: 'OWNER' } });
       if (owners <= 1) {
         throw Errors.conflict('LAST_OWNER', 'An organization must keep at least one Owner.');
       }
@@ -156,12 +175,13 @@ export class OrganizationsService {
     actor: ActorContext,
   ): Promise<MemberDto> {
     return this.prisma.$transaction(async (tx) => {
+      const actorRole = await this.lockOrgAndReadActorRole(tx, membership.orgId, actor.userId);
       const target = await tx.membership.findUnique({
         where: { orgId_userId: { orgId: membership.orgId, userId: targetUserId } },
         include: { user: { select: { id: true, name: true, email: true } } },
       });
       if (!target) throw Errors.notFound('Member');
-      await this.assertOwnerRules(tx, membership, target, role);
+      await this.assertOwnerRules(tx, membership.orgId, actorRole, target.role, role);
 
       const updated = await tx.membership.update({ where: { id: target.id }, data: { role } });
       if (target.role !== role) {
@@ -189,11 +209,12 @@ export class OrganizationsService {
     actor: ActorContext,
   ): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
+      const actorRole = await this.lockOrgAndReadActorRole(tx, membership.orgId, actor.userId);
       const target = await tx.membership.findUnique({
         where: { orgId_userId: { orgId: membership.orgId, userId: targetUserId } },
       });
       if (!target) throw Errors.notFound('Member');
-      await this.assertOwnerRules(tx, membership, target, null);
+      await this.assertOwnerRules(tx, membership.orgId, actorRole, target.role, null);
       await tx.membership.delete({ where: { id: target.id } });
       await this.audit.record(tx, actor, {
         orgId: membership.orgId,
