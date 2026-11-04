@@ -25,8 +25,8 @@ Legend: ✅ done · 🚧 in progress · ⬜ not started
 ## Milestones
 | # | Milestone | Status | Acceptance evidence |
 |---|---|---|---|
-| M1 | Repository and local environment | 🚧 done locally; CI run pending first push | [m1-local-environment.md](docs/milestones/m1-local-environment.md): smoke 17/17, unit 25/25 (2026-11-03) |
-| M2 | Auth, orgs, projects, frontend foundation | ⬜ | — |
+| M1 | Repository and local environment | ✅ | [m1-local-environment.md](docs/milestones/m1-local-environment.md): smoke 17/17, unit 25/25 (2026-11-03); **CI green on Linux**: [run 41775591802](https://github.com/Kartavya1905/modelops-cloud/actions/runs/41775591802) |
+| M2 | Auth, orgs, projects, frontend foundation | 🚧 done locally; CI run pending push | [m2-auth-orgs-projects.md](docs/milestones/m2-auth-orgs-projects.md): unit 33 + 27, integration 87/87, e2e 4/4 incl. axe, smoke 17/17 (2026-11-04) |
 | M3 | MLflow, registry, experiments | ⬜ | — |
 | M4 | Model validation and artifact storage | ⬜ | — |
 | M5 | Inference deployment pipeline | ⬜ | — |
@@ -48,8 +48,10 @@ Legend: ✅ done · 🚧 in progress · ⬜ not started
 ## Decisions
 - [x] TypeScript 7 vs 6.x → **6.0.3** (M1 spike, ADR-0007 addendum), risk R3
 - [x] SeaweedFS presigned URL + path-style → verified by smoke checks 9–10 (ADR-0003)
-- [ ] Prisma 7.x stable vs 8.0 if it reaches GA (decide at the start of M2), risk R4
+- [x] Prisma 7.x vs 8.0 → **7.10.1 stable** (8.0 still RC on 2026-11-04), risk R4
+- [x] Dependency age rule → newest stable **≥ 7 days old** (ADR-0007 addendum 2)
+- [x] Outbox + idempotency tables → deferred from M2 to **M5**, where they are first used
 
 ## Next actions
-1. Create the GitHub repo, commit, push, and get a green CI run (closes M1)
-2. Start M2: auth, orgs, projects, frontend foundation
+1. Commit and push M2, then get a green CI run (closes M2)
+2. Start M3: MLflow integration, experiments and model registry

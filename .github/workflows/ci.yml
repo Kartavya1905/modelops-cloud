@@ -1,4 +1,5 @@
-# Milestone 1 CI: code quality on every push/PR, then a full local-stack smoke test.
+# CI: code quality + contract drift on every push/PR, then the full local stack with
+# integration tests, smoke test and browser end-to-end tests.
 # Free on public repositories (GitHub-hosted ubuntu-latest runners include Docker).
 # Action versions are pinned by major tag for now; M11 pins them by commit SHA.
 name: ci
@@ -17,7 +18,7 @@ concurrency:
 
 jobs:
   quality:
-    name: lint · typecheck · unit tests
+    name: lint · typecheck · unit tests · contract
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -27,18 +28,27 @@ jobs:
         with:
           node-version-file: .node-version
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile # also runs `prisma generate` (api postinstall)
       - run: pnpm format:check
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
 
-  smoke:
-    name: local stack smoke test
+      # The committed OpenAPI document and generated TS types must match the API code.
+      - name: OpenAPI contract is up to date
+        run: |
+          pnpm contract
+          git diff --exit-code -- packages/api-contract || {
+            echo "::error::packages/api-contract is stale. Run 'pnpm contract' and commit the result."
+            exit 1
+          }
+
+  stack:
+    name: integration · smoke · e2e
     needs: quality
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -54,12 +64,18 @@ jobs:
       - name: Start infrastructure (waits for healthchecks)
         run: pnpm dev:up
 
+      - name: Apply database migrations
+        run: pnpm db:deploy
+
+      - name: Integration tests (real Postgres + Redis, throwaway database)
+        run: pnpm test:integration
+
       - name: Build and start API + web
         run: |
           pnpm build
           nohup pnpm --filter @modelops/api start > api.log 2>&1 &
           nohup pnpm --filter @modelops/web start > web.log 2>&1 &
-          for url in http://127.0.0.1:4000/api/v1/health/live http://127.0.0.1:3300/; do
+          for url in http://127.0.0.1:4000/api/v1/health/live http://127.0.0.1:3300/login; do
             for i in $(seq 1 60); do
               curl -fsS "$url" > /dev/null && break
               sleep 1
@@ -68,6 +84,19 @@ jobs:
 
       - name: Smoke test
         run: pnpm test:smoke
+
+      - name: Browser end-to-end tests (Playwright + axe)
+        run: |
+          pnpm --filter @modelops/e2e exec playwright install --with-deps chromium
+          pnpm test:e2e
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: tests/e2e/playwright-report
+          retention-days: 7
 
       - name: Diagnostics on failure
         if: failure()

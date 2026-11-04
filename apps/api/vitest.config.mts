@@ -5,7 +5,7 @@ import { defineConfig } from 'vitest/config';
 // injection needs. SWC does, reading `emitDecoratorMetadata` from tsconfig.json.
 export default defineConfig({
   test: {
-    include: ['test/**/*.spec.ts'],
+    include: ['test/unit/**/*.spec.ts'],
     environment: 'node',
   },
   plugins: [swc.vite({ module: { type: 'es6' } })],

@@ -1,6 +1,7 @@
 import type { Server } from 'node:http';
 import { Test } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import request from 'supertest';
 import { afterEach, describe, expect, it } from 'vitest';
 import { APP_CONFIG, type AppConfig } from '../../src/config/config';
@@ -24,6 +25,10 @@ async function bootWith(checks: DependencyCheck[]): Promise<INestApplication> {
     databaseUrl: 'postgresql://unused',
     redisUrl: 'redis://unused',
     healthCheckTimeoutMs: 50,
+    sessionPepper: 'x'.repeat(64),
+    cookieSecure: false,
+    webUrl: 'http://127.0.0.1:3300',
+    apiDocsEnabled: false,
   };
   const moduleRef = await Test.createTestingModule({
     controllers: [HealthController],
@@ -33,7 +38,7 @@ async function bootWith(checks: DependencyCheck[]): Promise<INestApplication> {
       { provide: DEPENDENCY_CHECKS, useValue: checks },
     ],
   }).compile();
-  const app = setupApp(moduleRef.createNestApplication({ logger: false }));
+  const app = setupApp(moduleRef.createNestApplication<NestExpressApplication>({ logger: false }));
   await app.init();
   return app;
 }

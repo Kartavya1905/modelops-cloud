@@ -1,9 +1,20 @@
 packages:
   - apps/*
   - packages/*
+  - tests/*
 
 # Supply-chain policy (ADR-0007): pnpm refuses packages published too recently,
 # giving the ecosystem time to catch compromised releases. We pin older patches
 # instead of adding exemptions to `minimumReleaseAgeExclude`.
 allowBuilds:
+  '@prisma/engines': true
+  '@scarf/scarf': false
   '@swc/core': true
+  argon2: true
+  prisma: true
+
+# openapi-typescript 7.13 declares `typescript: ^5.x`. TypeScript 6 keeps the same compiler API
+# and type generation was verified in M2 (packages/api-contract typechecks). Revisit on upgrade.
+peerDependencyRules:
+  allowedVersions:
+    openapi-typescript>typescript: '6'

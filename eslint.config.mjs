@@ -13,6 +13,8 @@ export default tseslint.config(
       '**/coverage/**',
       '**/node_modules/**',
       '**/next-env.d.ts',
+      '**/generated/**',
+      'packages/api-contract/src/schema.d.ts',
     ],
   },
   js.configs.recommended,
@@ -26,6 +28,13 @@ export default tseslint.config(
       // NestJS uses classes with only static/decorated members (modules).
       '@typescript-eslint/no-extraneous-class': 'off',
       '@typescript-eslint/restrict-template-expressions': ['error', { allowNumber: true }],
+      // Allow React's idiomatic `onChange={(e) => setValue(e.target.value)}`.
+      // `_name` marks an intentionally unused binding (e.g. a route param kept for documentation).
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_', destructuredArrayIgnorePattern: '^_' },
+      ],
+      '@typescript-eslint/no-confusing-void-expression': ['error', { ignoreArrowShorthand: true }],
     },
   },
   {

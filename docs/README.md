@@ -24,6 +24,7 @@ Phase 0 design set. Read in order for the full picture, or jump to what an inter
 | Milestone | Document |
 |---|---|
 | M1 | [Repository and local environment](milestones/m1-local-environment.md) |
+| M2 | [Authentication, organizations, projects, frontend foundation](milestones/m2-auth-orgs-projects.md) |
 
 ## Architecture Decision Records
 
@@ -44,4 +45,5 @@ Phase 0 design set. Read in order for the full picture, or jump to what an inter
 |---|---|---|
 | MinIO | SeaweedFS (S3 API) | MinIO CE no longer ships images or patches (ADR-0003) |
 | Optional AWS deployment | Terraform validated, never applied | Zero-cost constraint (ADR-0008) |
-| "Latest versions" | Latest **stable**; Prisma 7.x not 8.0 RC; Node 24 LTS | ADR-0007 |
+| "Latest versions" | Latest **stable and ≥ 7 days old**; Prisma 7.x not 8.0 RC; Node 24 LTS; TypeScript 6 | ADR-0007 |
+| shadcn/ui (CLI) | shadcn-style components written into the repo (Radix + cva) | CLI installs just-published versions that the release-age policy blocks (M2 doc) |

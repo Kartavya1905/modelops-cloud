@@ -10,5 +10,11 @@
     "outDir": "dist",
     "noEmit": true
   },
-  "include": ["src", "test", "vitest.config.mts"]
+  "include": [
+    "src",
+    "test",
+    "vitest.config.mts",
+    "vitest.integration.config.mts",
+    "prisma.config.ts"
+  ]
 }

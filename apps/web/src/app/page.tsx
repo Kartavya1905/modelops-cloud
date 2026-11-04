@@ -1,20 +1,35 @@
-import { PlatformStatus } from '@/components/platform-status';
+'use client';
 
+import { useRouter } from 'next/navigation';
+import { useEffect } from 'react';
+import { ErrorState } from '@/components/common/states';
+import { Skeleton } from '@/components/ui/primitives';
+import { useSession } from '@/lib/auth/session';
+
+/** "/" sends signed-in users to their first organization and everyone else to sign-in. */
 export default function HomePage() {
+  const router = useRouter();
+  const session = useSession();
+  const target = session.data
+    ? `/orgs/${session.data.memberships[0]?.orgId ?? ''}/projects`
+    : session.data === null
+      ? '/login'
+      : null;
+
+  useEffect(() => {
+    if (target) router.replace(target);
+  }, [router, target]);
+
+  if (session.isError) {
+    return (
+      <div className="mx-auto max-w-md px-4 py-24">
+        <ErrorState error={session.error} onRetry={() => void session.refetch()} />
+      </div>
+    );
+  }
   return (
-    <main className="mx-auto flex max-w-3xl flex-col gap-8 px-4 py-12 sm:px-6">
-      <header className="flex flex-col gap-2">
-        <p className="text-sm font-medium tracking-wide text-indigo-600 uppercase dark:text-indigo-400">
-          Milestone 1 · local environment
-        </p>
-        <h1 className="text-3xl font-semibold tracking-tight">ModelOps Cloud</h1>
-        <p className="text-zinc-600 dark:text-zinc-400">
-          Self-service platform to train, register, validate, deploy and monitor machine-learning
-          models. This page confirms the web app can reach the control-plane API through the{' '}
-          <code className="font-mono text-sm">/api</code> rewrite.
-        </p>
-      </header>
-      <PlatformStatus />
-    </main>
+    <div className="flex min-h-dvh items-center justify-center" aria-busy="true">
+      <Skeleton className="h-8 w-48" />
+    </div>
   );
 }

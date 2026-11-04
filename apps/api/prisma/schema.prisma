@@ -1,0 +1,158 @@
+// ModelOps Cloud — control-plane schema (Milestone 2: identity, tenancy, projects, audit).
+// Design: docs/03-data-model.md. Table and column names are snake_case in Postgres.
+// Every tenant-owned table carries org_id, and every query filters on it.
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  ML_ENGINEER
+  VIEWER
+}
+
+enum ActorType {
+  USER
+  API_KEY
+  SYSTEM
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  /// Stored lower-cased and trimmed; uniqueness is therefore case-insensitive.
+  email        String   @unique
+  /// Argon2id hash (PHC string format).
+  passwordHash String   @map("password_hash")
+  name         String
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  sessions            Session[]
+  memberships         Membership[]
+  invitationsCreated  Invitation[] @relation("InvitationCreatedBy")
+  invitationsAccepted Invitation[] @relation("InvitationAcceptedBy")
+  projectsCreated     Project[]
+
+  @@map("users")
+}
+
+model Session {
+  id                String    @id @default(uuid()) @db.Uuid
+  userId            String    @map("user_id") @db.Uuid
+  /// SHA-256 of the opaque cookie token. The token itself is never stored.
+  tokenHash         Bytes     @unique @map("token_hash")
+  /// Sliding expiry (extended on use).
+  expiresAt         DateTime  @map("expires_at") @db.Timestamptz(3)
+  /// Hard limit regardless of activity.
+  absoluteExpiresAt DateTime  @map("absolute_expires_at") @db.Timestamptz(3)
+  lastSeenAt        DateTime  @default(now()) @map("last_seen_at") @db.Timestamptz(3)
+  revokedAt         DateTime? @map("revoked_at") @db.Timestamptz(3)
+  ipHash            String?   @map("ip_hash")
+  userAgent         String?   @map("user_agent")
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model Organization {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  memberships Membership[]
+  invitations Invitation[]
+  projects    Project[]
+  auditEvents AuditEvent[]
+
+  @@map("organizations")
+}
+
+model Membership {
+  id        String   @id @default(uuid()) @db.Uuid
+  orgId     String   @map("org_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  role      Role
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  org  Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, userId])
+  @@index([userId])
+  @@map("memberships")
+}
+
+model Invitation {
+  id           String    @id @default(uuid()) @db.Uuid
+  orgId        String    @map("org_id") @db.Uuid
+  email        String
+  role         Role
+  /// SHA-256 of the one-time token in the invite link.
+  tokenHash    Bytes     @unique @map("token_hash")
+  createdById  String    @map("created_by_id") @db.Uuid
+  expiresAt    DateTime  @map("expires_at") @db.Timestamptz(3)
+  acceptedAt   DateTime? @map("accepted_at") @db.Timestamptz(3)
+  acceptedById String?   @map("accepted_by_id") @db.Uuid
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  org        Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  createdBy  User         @relation("InvitationCreatedBy", fields: [createdById], references: [id])
+  acceptedBy User?        @relation("InvitationAcceptedBy", fields: [acceptedById], references: [id])
+
+  @@index([orgId, createdAt(sort: Desc)])
+  @@map("invitations")
+}
+
+model Project {
+  id          String    @id @default(uuid()) @db.Uuid
+  orgId       String    @map("org_id") @db.Uuid
+  slug        String
+  name        String
+  description String?
+  createdById String    @map("created_by_id") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  archivedAt  DateTime? @map("archived_at") @db.Timestamptz(3)
+
+  org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  createdBy User         @relation(fields: [createdById], references: [id])
+
+  @@unique([orgId, slug])
+  @@index([orgId, createdAt(sort: Desc)])
+  @@map("projects")
+}
+
+/// Append-only: a trigger in the migration rejects UPDATE and DELETE.
+model AuditEvent {
+  id         BigInt    @id @default(autoincrement())
+  /// Null for events that belong to a user rather than an organization (e.g. login).
+  orgId      String?   @map("org_id") @db.Uuid
+  actorType  ActorType @map("actor_type")
+  actorId    String?   @map("actor_id") @db.Uuid
+  /// `<aggregate>.<verb-past>`, e.g. `project.created`.
+  action     String
+  targetType String?   @map("target_type")
+  targetId   String?   @map("target_id")
+  /// Never contains request bodies, passwords, tokens or raw IP addresses.
+  metadata   Json      @default("{}")
+  requestId  String?   @map("request_id")
+  ipHash     String?   @map("ip_hash")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  org Organization? @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, id(sort: Desc)])
+  @@index([actorId, id(sort: Desc)])
+  @@map("audit_events")
+}

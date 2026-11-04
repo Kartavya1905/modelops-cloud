@@ -1,0 +1,23 @@
+{
+  "name": "@modelops/api-contract",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Management API contract: OpenAPI document (generated from NestJS) + TypeScript types",
+  "license": "MIT",
+  "type": "module",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts"
+    },
+    "./openapi.json": "./openapi.json"
+  },
+  "scripts": {
+    "generate": "openapi-typescript openapi.json --output src/schema.d.ts --alphabetize",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "openapi-typescript": "7.13.0",
+    "typescript": "6.0.3"
+  }
+}

@@ -1,0 +1,17 @@
+/**
+ * Query-key factory: one place that defines the cache shape, so invalidation is precise
+ * (e.g. creating a project invalidates exactly `projects(orgId)` and nothing else).
+ */
+export const qk = {
+  session: ['session'] as const,
+  orgs: ['orgs'] as const,
+  org: (orgId: string) => ['orgs', orgId] as const,
+  projects: (orgId: string) => ['orgs', orgId, 'projects'] as const,
+  projectList: (orgId: string, includeArchived: boolean) =>
+    ['orgs', orgId, 'projects', 'list', { includeArchived }] as const,
+  project: (orgId: string, projectId: string) => ['orgs', orgId, 'projects', projectId] as const,
+  members: (orgId: string) => ['orgs', orgId, 'members'] as const,
+  invitations: (orgId: string) => ['orgs', orgId, 'invitations'] as const,
+  audit: (orgId: string, action: string) => ['orgs', orgId, 'audit', { action }] as const,
+  invitation: (token: string) => ['invitation', token] as const,
+};
