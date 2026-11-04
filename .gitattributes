@@ -7,3 +7,5 @@
 *.jpg binary
 *.onnx binary
 *.parquet binary
+# Generated fixture bundles are hashed byte-for-byte: never convert line endings
+tests/fixtures/bundles/** -text

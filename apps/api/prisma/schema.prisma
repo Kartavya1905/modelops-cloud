@@ -35,12 +35,24 @@ enum ModelFramework {
   PYTORCH_ONNX
 }
 
-/// M3 registers versions as PENDING_VALIDATION; the M4 validator moves them on.
+/// PENDING_VALIDATION -> VALIDATING -> VALIDATED | REJECTED (M4 validator).
 enum ModelVersionStatus {
   PENDING_VALIDATION
   VALIDATING
   VALIDATED
   REJECTED
+}
+
+enum ModelVersionSource {
+  MLFLOW_RUN
+  UPLOAD
+}
+
+/// PASSED/FAILED describe the model; ERROR means the validation could not run (infrastructure).
+enum ValidationResult {
+  PASSED
+  FAILED
+  ERROR
 }
 
 model User {
@@ -97,6 +109,7 @@ model Organization {
   registeredModels RegisteredModel[]
   modelVersions    ModelVersion[]
   datasetVersions  DatasetVersion[]
+  validations      ValidationReport[]
 
   @@map("organizations")
 }
@@ -215,13 +228,24 @@ model ModelVersion {
   version                  Int
   framework                ModelFramework
   status                   ModelVersionStatus @default(PENDING_VALIDATION)
-  mlflowRunId              String             @map("mlflow_run_id")
+  source                   ModelVersionSource @default(MLFLOW_RUN)
+  /// Null for uploaded bundles.
+  mlflowRunId              String?            @map("mlflow_run_id")
   /// Version number in the MLflow registry mirror; null until the mirror call succeeds.
   mlflowVersion            String?            @map("mlflow_version")
   /// e.g. `mlflow-artifacts:/7/<run-id>/artifacts/model`. M4 copies it to content-addressed storage.
   sourceUri                String             @map("source_uri")
-  /// SHA-256 reported by the training run; M4 recomputes and verifies it.
+  /// SHA-256 reported by the training run; ingest recomputes it and rejects a mismatch.
   reportedSha256           String?            @map("reported_sha256") @db.Char(64)
+  /// Content-addressed copies in `model-artifacts/blobs/sha256/<hash>` (set at ingest, immutable).
+  artifactSha256           String?            @map("artifact_sha256") @db.Char(64)
+  signatureSha256          String?            @map("signature_sha256") @db.Char(64)
+  goldenSha256             String?            @map("golden_sha256") @db.Char(64)
+  sizeBytes                Int?               @map("size_bytes")
+  /// Validation bookkeeping: attempts so far and the lease of the worker currently validating.
+  validationAttempts       Int                @default(0) @map("validation_attempts")
+  validationLeaseUntil     DateTime?          @map("validation_lease_until") @db.Timestamptz(3)
+  validatedAt              DateTime?          @map("validated_at") @db.Timestamptz(3)
   signature                Json
   /// Snapshot of the run's metrics at registration time.
   metrics                  Json               @default("{}")
@@ -236,11 +260,34 @@ model ModelVersion {
   parent          ModelVersion?   @relation("Lineage", fields: [parentVersionId], references: [id])
   children        ModelVersion[]  @relation("Lineage")
   createdBy       User            @relation(fields: [createdById], references: [id])
+  validations     ValidationReport[]
 
   @@unique([modelId, version])
   @@unique([modelId, mlflowRunId])
   @@index([orgId, createdAt(sort: Desc)])
+  @@index([status, validationLeaseUntil])
   @@map("model_versions")
+}
+
+/// One row per validation attempt (history is kept; the latest decides the status).
+model ValidationReport {
+  id               String           @id @default(uuid()) @db.Uuid
+  orgId            String           @map("org_id") @db.Uuid
+  versionId        String           @map("version_id") @db.Uuid
+  attempt          Int
+  result           ValidationResult
+  /// [{ id: "V1", name, passed: true|false|null, detail }]
+  checks           Json
+  /// opset, operators, loadMs, peakRssMb, goldenMaxAbsDiff, latencyP50Ms/P95Ms, ...
+  facts            Json             @default("{}")
+  validatorVersion String           @map("validator_version")
+  createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  org     Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  version ModelVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@index([versionId, createdAt(sort: Desc)])
+  @@map("validation_reports")
 }
 
 /// Append-only: a trigger in the migration rejects UPDATE and DELETE.

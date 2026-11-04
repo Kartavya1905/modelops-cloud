@@ -103,7 +103,8 @@ test('train two models, compare their runs, register a version and inspect its l
 
   // ---- version page: status, lineage, signature --------------------------------------------
   await expect(page.getByRole('heading', { name: 'Churn classifier v1' })).toBeVisible();
-  await expect(page.getByText('Awaiting validation').first()).toBeVisible();
+  // M4: the worker ingests the run's bundle and validates it in the sandbox (V1-V11).
+  await expect(page.getByText('Passed all checks')).toBeVisible({ timeout: 90_000 });
   await expect(page.getByText('seed7-n3000')).toBeVisible();
   for (const feature of ['tenure_months', 'monthly_charges', 'usage_hours']) {
     await expect(page.getByRole('cell', { name: feature, exact: true })).toBeVisible();

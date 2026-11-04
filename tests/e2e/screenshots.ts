@@ -1,5 +1,5 @@
-// Captures README/demo screenshots of the M2 UI from a running stack.
-//   pnpm --filter @modelops/e2e screenshots      (writes docs/images/m2-*.png)
+// Captures README/demo screenshots (M2-M4) from a running stack, in light and dark mode.
+//   pnpm --filter @modelops/e2e screenshots      (writes docs/images/m*.png)
 // Uses a fresh throwaway account each run; nothing here is a real credential.
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -10,10 +10,20 @@ import { chromium, type Page } from '@playwright/test';
 const BASE = process.env.E2E_BASE_URL ?? 'http://127.0.0.1:3300';
 const OUT = join(import.meta.dirname, '..', '..', 'docs', 'images');
 const ML_DIR = join(import.meta.dirname, '..', '..', 'ml');
+const BUNDLES = join(import.meta.dirname, '..', 'fixtures', 'bundles');
 const password = `demo-${randomUUID()}`;
+
+/** Toasts are transient: wait until none is on screen so they never cover the shot. */
+async function noToasts(page: Page): Promise<void> {
+  await page.locator('[data-sonner-toast]').first().waitFor({ state: 'detached', timeout: 10_000 });
+}
 
 async function shot(page: Page, name: string): Promise<void> {
   await page.waitForLoadState('networkidle');
+  // dialogs fade/zoom in: capture the settled frame, not a translucent one
+  await page.waitForFunction(() =>
+    document.getAnimations().every((a) => a.playState !== 'running'),
+  );
   await page.screenshot({ path: join(OUT, `${name}.png`), fullPage: false });
   console.log(`screenshot: docs/images/${name}.png`);
 }
@@ -115,8 +125,36 @@ async function main(): Promise<void> {
     await rows.filter({ hasText: 'pytorch-mlp' }).getByRole('button', { name: 'Register' }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Register version' }).click();
     await page.getByRole('heading', { name: 'Churn classifier v1' }).waitFor();
-    await page.screenshot({ path: join(OUT, `m3-version${suffix}.png`), fullPage: true });
-    console.log(`screenshot: docs/images/m3-version${suffix}.png`);
+
+    // ---- M4: the worker validates it; then a hostile upload is rejected ----------------
+    await page.getByText('Passed all checks').waitFor({ timeout: 90_000 });
+    await noToasts(page);
+    await page.screenshot({ path: join(OUT, `m4-validated${suffix}.png`), fullPage: true });
+    console.log(`screenshot: docs/images/m4-validated${suffix}.png`);
+    await page.getByRole('link', { name: 'Churn classifier' }).click();
+    await page.getByRole('button', { name: 'Upload bundle' }).click();
+    const upload = page.getByRole('dialog', { name: 'Upload a bundle' });
+    await upload.getByLabel('model.onnx').setInputFiles({
+      name: 'model.onnx',
+      mimeType: 'application/octet-stream',
+      // a pickle that would run a shell command if anything ever unpickled it
+      buffer: Buffer.concat([
+        Buffer.from([0x80, 0x04, 0x95]),
+        Buffer.from("cos\nsystem\n(S'touch /tmp/pwned'\ntR.", 'latin1'),
+      ]),
+    });
+    await upload
+      .getByLabel('signature.json')
+      .setInputFiles(join(BUNDLES, 'sklearn', 'signature.json'));
+    await upload
+      .getByLabel('golden_examples.json')
+      .setInputFiles(join(BUNDLES, 'sklearn', 'golden_examples.json'));
+    await shot(page, `m4-upload${suffix}`);
+    await upload.getByRole('button', { name: 'Upload and validate' }).click();
+    await page.getByText('Rejected: V1 failed').waitFor({ timeout: 90_000 });
+    await noToasts(page);
+    await page.screenshot({ path: join(OUT, `m4-rejected${suffix}.png`), fullPage: true });
+    console.log(`screenshot: docs/images/m4-rejected${suffix}.png`);
     await page.close();
   }
   await browser.close();

@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
 import { RUN_ID } from '../experiments/experiments.dto';
+import { ValidationReportDto } from '../validation/validation.dto';
 
 const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value);
 
@@ -35,7 +36,9 @@ export class ModelVersionSummaryDto {
   @ApiProperty() version!: number;
   @ApiProperty({ enum: FRAMEWORKS }) framework!: (typeof FRAMEWORKS)[number];
   @ApiProperty({ enum: STATUSES }) status!: (typeof STATUSES)[number];
-  @ApiProperty() mlflowRunId!: string;
+  @ApiProperty({ enum: ['MLFLOW_RUN', 'UPLOAD'] }) source!: 'MLFLOW_RUN' | 'UPLOAD';
+  @ApiProperty({ type: String, nullable: true, description: 'Null for uploaded bundles' })
+  mlflowRunId!: string | null;
   @ApiProperty({ type: String, nullable: true, description: 'Null until mirrored to MLflow' })
   mlflowVersion!: string | null;
   @ApiProperty({ type: 'object', additionalProperties: { type: 'number' } })
@@ -118,6 +121,17 @@ export class ModelVersionDto extends ModelVersionSummaryDto {
   @ApiProperty({ type: SignatureDto }) signature!: SignatureDto;
   @ApiProperty({ type: DatasetVersionDto, nullable: true })
   trainingDataset!: DatasetVersionDto | null;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'SHA-256 of model.onnx in content-addressed storage (null until ingested)',
+  })
+  artifactSha256!: string | null;
+  @ApiProperty({ type: Number, nullable: true }) sizeBytes!: number | null;
+  @ApiProperty() validationAttempts!: number;
+  @ApiProperty({ type: String, format: 'date-time', nullable: true }) validatedAt!: string | null;
+  @ApiProperty({ type: ValidationReportDto, nullable: true })
+  latestValidation!: ValidationReportDto | null;
   @ApiProperty({ type: String, nullable: true, description: 'Set when the MLflow mirror failed' })
   mlflowSyncError!: string | null;
 }

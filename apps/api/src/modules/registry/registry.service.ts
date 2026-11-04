@@ -1,6 +1,7 @@
 import { HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { AppError, Errors } from '../../common/errors/app-error';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { ArtifactStore } from '../../common/storage/artifact-store';
 import type { ActorContext } from '../../common/request-context/request-context';
 import { slugify } from '../../common/slug';
 import {
@@ -22,6 +23,9 @@ import type {
   ModelVersionSummaryDto,
 } from './registry.dto';
 import { parseSignature, type Signature } from './signature';
+import { reportDto } from '../validation/validation.controller';
+import { ValidationQueue } from '../validation/validation.queue';
+import { MAX_JSON_BYTES, MAX_MODEL_BYTES } from '../validation/validation.service';
 
 const BUNDLE_FILES = ['model.onnx', 'signature.json', 'golden_examples.json'] as const;
 const FRAMEWORKS: readonly ModelFramework[] = ['SKLEARN_ONNX', 'PYTORCH_ONNX'];
@@ -41,6 +45,7 @@ function summary(v: ModelVersion): ModelVersionSummaryDto {
     version: v.version,
     framework: v.framework,
     status: v.status,
+    source: v.source,
     mlflowRunId: v.mlflowRunId,
     mlflowVersion: v.mlflowVersion,
     metrics: v.metrics as Record<string, number>,
@@ -75,6 +80,8 @@ export class RegistryService {
     private readonly audit: AuditService,
     private readonly mlflow: MlflowClient,
     private readonly experiments: ExperimentsService,
+    private readonly store: ArtifactStore,
+    private readonly validationQueue: ValidationQueue,
   ) {}
 
   // ------------------------------------------------------------------------------ models
@@ -382,6 +389,115 @@ export class RegistryService {
       mlflowSyncError = err instanceof Error ? err.message : 'MLflow mirror failed';
       this.logger.warn(`MLflow mirror for model version ${created.id} failed: ${mlflowSyncError}`);
     }
+    await this.validationQueue.enqueue(created.id);
+    return { ...(await this.getVersion(orgId, created.id)), mlflowSyncError };
+  }
+
+  /**
+   * Registers an uploaded bundle (no MLflow run). The files are hashed on the server and stored
+   * content-addressed *before* the version row exists, then validated like any other version.
+   */
+  async uploadVersion(
+    orgId: string,
+    modelId: string,
+    upload: { framework: string; model: Buffer; signature: Buffer; golden: Buffer },
+    actor: ActorContext,
+  ): Promise<ModelVersionDto> {
+    const model = await this.prisma.registeredModel.findFirst({
+      where: { id: modelId, orgId },
+      include: { project: { select: { archivedAt: true } } },
+    });
+    if (!model) throw Errors.notFound('Model');
+    if (model.project.archivedAt)
+      throw Errors.conflict('PROJECT_ARCHIVED', 'This project is archived.');
+    if (!FRAMEWORKS.includes(upload.framework as ModelFramework)) {
+      throw unprocessable(
+        'UNSUPPORTED_FRAMEWORK',
+        `framework must be one of ${FRAMEWORKS.join(', ')}.`,
+      );
+    }
+    if (upload.model.length > MAX_MODEL_BYTES) {
+      throw new AppError(
+        HttpStatus.PAYLOAD_TOO_LARGE,
+        'ARTIFACT_TOO_LARGE',
+        'Artifact too large',
+        `model.onnx is larger than ${String(MAX_MODEL_BYTES)} bytes.`,
+      );
+    }
+    if (upload.signature.length > MAX_JSON_BYTES || upload.golden.length > MAX_JSON_BYTES) {
+      throw new AppError(
+        HttpStatus.PAYLOAD_TOO_LARGE,
+        'ARTIFACT_TOO_LARGE',
+        'Artifact too large',
+        'signature.json and golden_examples.json must be at most 1 MB.',
+      );
+    }
+    const parsed = parseSignature(upload.signature.toString('utf8'));
+    if (!parsed.ok) {
+      throw unprocessable(
+        'SIGNATURE_INVALID',
+        'signature.json does not match the expected schema.',
+        parsed.errors,
+      );
+    }
+
+    const [m, s, g] = await Promise.all([
+      this.store.putIfAbsent(upload.model, 'application/octet-stream'),
+      this.store.putIfAbsent(upload.signature, 'application/json'),
+      this.store.putIfAbsent(upload.golden, 'application/json'),
+    ]);
+    const created = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM registered_models WHERE id = ${modelId}::uuid FOR UPDATE`;
+      const last = await tx.modelVersion.aggregate({ where: { modelId }, _max: { version: true } });
+      const version = (last._max.version ?? 0) + 1;
+      const v = await tx.modelVersion.create({
+        data: {
+          orgId,
+          modelId,
+          version,
+          framework: upload.framework as ModelFramework,
+          source: 'UPLOAD',
+          sourceUri: `s3://${this.store.bucket}/blobs/sha256/${m.sha256}`,
+          signature: parsed.value,
+          artifactSha256: m.sha256,
+          signatureSha256: s.sha256,
+          goldenSha256: g.sha256,
+          sizeBytes: upload.model.length,
+          createdById: actor.userId,
+        },
+      });
+      await this.audit.record(tx, actor, {
+        orgId,
+        action: 'model_version.registered',
+        targetType: 'model_version',
+        targetId: v.id,
+        metadata: {
+          model: model.slug,
+          version,
+          framework: upload.framework,
+          source: 'UPLOAD',
+          sha256: m.sha256,
+        },
+      });
+      return v;
+    });
+
+    let mlflowSyncError: string | null = null;
+    try {
+      const mlflowVersion = await this.mlflow.createModelVersion(
+        model.mlflowName,
+        created.sourceUri,
+        null,
+        [
+          { key: 'modelops.version_id', value: created.id },
+          { key: 'modelops.status', value: created.status },
+        ],
+      );
+      await this.prisma.modelVersion.update({ where: { id: created.id }, data: { mlflowVersion } });
+    } catch (err) {
+      mlflowSyncError = err instanceof Error ? err.message : 'MLflow mirror failed';
+    }
+    await this.validationQueue.enqueue(created.id);
     return { ...(await this.getVersion(orgId, created.id)), mlflowSyncError };
   }
 
@@ -390,6 +506,7 @@ export class RegistryService {
       where: { id: versionId, orgId },
       include: {
         trainingDataset: true,
+        validations: { orderBy: { createdAt: 'desc' }, take: 1 },
         model: {
           select: {
             id: true,
@@ -408,6 +525,11 @@ export class RegistryService {
       reportedSha256: v.reportedSha256,
       signature: v.signature as Signature,
       trainingDataset: v.trainingDataset ? datasetDto(v.trainingDataset) : null,
+      artifactSha256: v.artifactSha256,
+      sizeBytes: v.sizeBytes,
+      validationAttempts: v.validationAttempts,
+      validatedAt: v.validatedAt?.toISOString() ?? null,
+      latestValidation: v.validations[0] ? reportDto(v.validations[0]) : null,
       mlflowSyncError: null,
     };
   }

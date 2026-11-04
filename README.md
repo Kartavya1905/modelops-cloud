@@ -2,9 +2,9 @@
 
 A self-service platform to **train → register → validate → deploy → serve → monitor → safely release** machine-learning models, running entirely on a laptop at zero cost.
 
-> **Status: Milestone 3 of 12.** Working today: accounts and organizations with roles, projects, an audit log, **training two real models into MLflow, comparing runs, and registering versions with lineage**. Validation (M4) and deployment (M5) come next, so registered versions cannot be deployed yet. See [`PROGRESS.md`](PROGRESS.md) for exactly what is done. This README only describes implemented features.
+> **Status: Milestone 4 of 12.** Working today: accounts and organizations with roles, projects, an audit log, training two real models into MLflow, comparing runs, registering versions with lineage, and **validating every version in a sandbox (checks V1–V11) before it can be deployed**. Deployment (M5) comes next, so validated versions cannot be served yet. See [`PROGRESS.md`](PROGRESS.md) for exactly what is done. This README only describes implemented features.
 
-![Compare runs](docs/images/m3-compare.png)
+![A validated model version](docs/images/m4-validated.png)
 
 ## What problem does it solve?
 
@@ -17,10 +17,10 @@ Prerequisites: Docker Desktop, Node 24, pnpm 12, uv. Everything is free.
 ```bash
 pnpm install
 pnpm env:init      # generates .env with random secrets
-pnpm dev:up        # Postgres, Redis, SeaweedFS (S3), MLflow, all health-checked
+pnpm dev:up        # Postgres, Redis, SeaweedFS (S3), MLflow, ml-worker (validator), all health-checked
 pnpm db:deploy     # apply database migrations
 uv sync --directory ml   # Python training environment (CPU-only PyTorch)
-pnpm dev           # web http://127.0.0.1:3300 · API http://127.0.0.1:4000 (Swagger at /api/docs)
+pnpm dev           # web http://127.0.0.1:3300 · API http://127.0.0.1:4000 (Swagger at /api/docs) · validation worker
 pnpm dev:clean     # remove containers and volumes
 ```
 
@@ -41,20 +41,22 @@ pnpm ml:train --experiment modelops/<org-slug>/<project-slug>
 | Audit | Append-only log (enforced by a database trigger), filterable in the UI |
 | Training | Seeded synthetic churn data → scikit-learn GBM and PyTorch MLP → parity-checked ONNX bundles (no pickle) → MLflow |
 | Experiments | Each project gets its own MLflow experiment; run list, per-epoch curves, side-by-side comparison with charts |
-| Registry | Models and immutable numbered versions with signature, metrics and dataset lineage (SHA-256), mirrored to MLflow's registry; versions await validation (M4) |
+| Registry | Models and immutable numbered versions with signature, metrics and dataset lineage (SHA-256), mirrored to MLflow's registry; register a run or upload a bundle |
+| Validation | Content-addressed storage (`sha256/<hash>`, never overwritten); a sandboxed validator rejects pickles, external data, unknown operators, signature mismatches, golden-example drift, slow models and tampered bytes (V1–V11); live checklist in the UI; durable queue with retries and crash recovery |
 | API contract | OpenAPI generated from the NestJS code → typed web client; CI fails on drift |
 
 ## Tests
 
 ```bash
-pnpm test               # unit + component (54 API, 35 web)
+pnpm test               # unit + component (57 API, 35 web)
 pnpm ml:test            # 32 Python tests (dataset determinism, ONNX parity, bundles)
-pnpm test:integration   # 142 tests against real Postgres, Redis and MLflow (throwaway database)
+pnpm test:integration   # 172 tests against real Postgres, Redis, MLflow, S3 and the validator (throwaway database)
+uv run --directory services/ml-worker pytest   # 31 validator tests incl. adversarial artifacts
 pnpm test:e2e           # Playwright journeys incl. real model training + axe accessibility checks
-pnpm test:smoke         # 17 environment checks
+pnpm test:smoke         # 20 environment checks
 ```
 
-Results and details: [M1](docs/milestones/m1-local-environment.md) · [M2](docs/milestones/m2-auth-orgs-projects.md) · [M3](docs/milestones/m3-experiments-registry.md) · [local development guide](docs/10-local-development.md).
+Results and details: [M1](docs/milestones/m1-local-environment.md) · [M2](docs/milestones/m2-auth-orgs-projects.md) · [M3](docs/milestones/m3-experiments-registry.md) · [M4](docs/milestones/m4-validation-artifacts.md) · [local development guide](docs/10-local-development.md).
 
 ## Design
 

@@ -193,12 +193,19 @@ export class MlflowClient {
   }
 
   /**
-   * Downloads a small artifact through MLflow's artifact proxy. `artifactUri` is the run's
-   * `mlflow-artifacts:/<exp>/<run>/artifacts`; `maxBytes` bounds memory use.
+   * Downloads an artifact through MLflow's artifact proxy. `artifactUri` is a run artifact root
+   * (`mlflow-artifacts:/<exp>/<run>/artifacts[/sub/dir]`).
+   *
+   * Streams with a hard byte limit: a file larger than `maxBytes` is never fully buffered, the
+   * download is aborted as soon as the limit is crossed (MlflowError 413).
    */
-  async downloadArtifactText(artifactUri: string, path: string, maxBytes: number): Promise<string> {
+  async downloadArtifactBytes(
+    artifactUri: string,
+    path: string,
+    maxBytes: number,
+  ): Promise<Buffer> {
     const prefix = 'mlflow-artifacts:/';
-    if (!artifactUri.startsWith(prefix)) {
+    if (!artifactUri.startsWith(prefix) || path.includes('..')) {
       throw new MlflowError(
         400,
         'UNSUPPORTED_ARTIFACT_URI',
@@ -206,24 +213,57 @@ export class MlflowClient {
       );
     }
     const proxied = `/api/2.0/mlflow-artifacts/artifacts/${artifactUri.slice(prefix.length)}/${path}`;
-    let res: Response;
+    const controller = new AbortController();
+    const timer = setTimeout(
+      () => {
+        controller.abort();
+      },
+      Math.max(this.config.mlflowTimeoutMs, 60_000),
+    );
     try {
-      res = await fetch(`${this.config.mlflowUrl}${proxied}`, {
-        signal: AbortSignal.timeout(this.config.mlflowTimeoutMs),
-      });
-    } catch {
-      throw mlflowUnavailable('The experiment tracking service did not respond.');
+      let res: Response;
+      try {
+        res = await fetch(`${this.config.mlflowUrl}${proxied}`, { signal: controller.signal });
+      } catch {
+        throw mlflowUnavailable('The experiment tracking service did not respond.');
+      }
+      if (res.status === 404)
+        throw new MlflowError(404, 'RESOURCE_DOES_NOT_EXIST', `${path} not found`);
+      if (!res.ok)
+        throw mlflowUnavailable(`Artifact download failed (HTTP ${String(res.status)}).`);
+      if (Number(res.headers.get('content-length') ?? '0') > maxBytes || !res.body) {
+        controller.abort();
+        throw new MlflowError(
+          413,
+          'ARTIFACT_TOO_LARGE',
+          `${path} is larger than ${String(maxBytes)} bytes`,
+        );
+      }
+      const chunks: Uint8Array[] = [];
+      let total = 0;
+      const reader = (res.body as ReadableStream<Uint8Array>).getReader();
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        total += value.byteLength;
+        if (total > maxBytes) {
+          controller.abort();
+          throw new MlflowError(
+            413,
+            'ARTIFACT_TOO_LARGE',
+            `${path} is larger than ${String(maxBytes)} bytes`,
+          );
+        }
+        chunks.push(value);
+      }
+      return Buffer.concat(chunks);
+    } finally {
+      clearTimeout(timer);
     }
-    if (res.status === 404)
-      throw new MlflowError(404, 'RESOURCE_DOES_NOT_EXIST', `${path} not found`);
-    if (!res.ok) throw mlflowUnavailable(`Artifact download failed (HTTP ${String(res.status)}).`);
-    const declared = Number(res.headers.get('content-length') ?? '0');
-    if (declared > maxBytes)
-      throw new MlflowError(413, 'ARTIFACT_TOO_LARGE', `${path} is too large`);
-    const buf = Buffer.from(await res.arrayBuffer());
-    if (buf.length > maxBytes)
-      throw new MlflowError(413, 'ARTIFACT_TOO_LARGE', `${path} is too large`);
-    return buf.toString('utf8');
+  }
+
+  async downloadArtifactText(artifactUri: string, path: string, maxBytes: number): Promise<string> {
+    return (await this.downloadArtifactBytes(artifactUri, path, maxBytes)).toString('utf8');
   }
 
   // ---- model registry ------------------------------------------------------------------------
@@ -255,14 +295,25 @@ export class MlflowClient {
   async createModelVersion(
     name: string,
     source: string,
-    runId: string,
+    runId: string | null,
     tags: MlflowTag[],
   ): Promise<string> {
     const r = await this.request<{ model_version: { version: string } }>(
       'POST',
       '/api/2.0/mlflow/model-versions/create',
-      { body: { name, source, run_id: runId, tags } },
+      { body: { name, source, tags, ...(runId && { run_id: runId }) } },
     );
     return r.model_version.version;
+  }
+
+  async setModelVersionTag(
+    name: string,
+    version: string,
+    key: string,
+    value: string,
+  ): Promise<void> {
+    await this.request('POST', '/api/2.0/mlflow/model-versions/set-tag', {
+      body: { name, version, key, value },
+    });
   }
 }

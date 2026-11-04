@@ -49,8 +49,12 @@ export interface RunSpec {
   metrics?: Record<string, number>;
   params?: Record<string, string>;
   series?: Record<string, number[]>;
+  /** extra run tags (e.g. modelops.bundle.sha256) */
+  tags?: Record<string, string>;
   /** bundle files under model/; `null` omits a file */
-  files?: Partial<Record<'model.onnx' | 'signature.json' | 'golden_examples.json', string | null>>;
+  files?: Partial<
+    Record<'model.onnx' | 'signature.json' | 'golden_examples.json', string | Uint8Array | null>
+  >;
 }
 
 export async function createRun(experimentId: string, spec: RunSpec = {}): Promise<string> {
@@ -65,6 +69,7 @@ export async function createRun(experimentId: string, spec: RunSpec = {}): Promi
     ...(spec.framework === null
       ? []
       : [{ key: 'modelops.framework', value: spec.framework ?? 'SKLEARN_ONNX' }]),
+    ...Object.entries(spec.tags ?? {}).map(([key, value]) => ({ key, value })),
   ];
   const { run } = await call<{ run: { info: { run_id: string; artifact_uri: string } } }>(
     'POST',
@@ -84,7 +89,7 @@ export async function createRun(experimentId: string, spec: RunSpec = {}): Promi
   ).map(([key, value]) => ({ key, value }));
   await call('POST', '/api/2.0/mlflow/runs/log-batch', { run_id: runId, metrics, params });
 
-  const files = {
+  const files: Record<string, string | Uint8Array | null> = {
     'model.onnx': 'not-a-real-onnx-graph (validated in M4)',
     'signature.json': JSON.stringify(VALID_SIGNATURE),
     'golden_examples.json': JSON.stringify({ inputs: [[1, 2, 3, 0, 0, 40]], outputs: {} }),
@@ -125,6 +130,13 @@ export async function getRegisteredModel(name: string) {
       latest_versions?: { version: string; run_id: string }[];
     };
   }>('GET', `/api/2.0/mlflow/registered-models/get?name=${encodeURIComponent(name)}`);
+}
+
+export async function getModelVersion(name: string, version: string) {
+  return call<{ model_version: { tags?: { key: string; value: string }[]; source: string } }>(
+    'GET',
+    `/api/2.0/mlflow/model-versions/get?name=${encodeURIComponent(name)}&version=${version}`,
+  );
 }
 
 export async function getExperiment(id: string) {

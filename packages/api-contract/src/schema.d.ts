@@ -244,6 +244,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/orgs/{orgId}/model-versions/{versionId}/validation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["Validation_history"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orgs/{orgId}/model-versions/{versionId}/validation/rerun": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["Validation_rerun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/orgs/{orgId}/models/{modelId}": {
         parameters: {
             query?: never;
@@ -270,6 +302,22 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["Registry_importVersion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orgs/{orgId}/models/{modelId}/versions/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["Registry_uploadVersion"];
         delete?: never;
         options?: never;
         head?: never;
@@ -604,16 +652,20 @@ export interface components {
             project: components["schemas"]["ProjectRefDto"];
         };
         ModelVersionDto: {
+            /** @description SHA-256 of model.onnx in content-addressed storage (null until ingested) */
+            artifactSha256: string | null;
             /** Format: date-time */
             createdAt: string;
             /** @enum {string} */
             framework: "SKLEARN_ONNX" | "PYTORCH_ONNX";
             /** Format: uuid */
             id: string;
+            latestValidation: components["schemas"]["ValidationReportDto"] | null;
             metrics: {
                 [key: string]: number;
             };
-            mlflowRunId: string;
+            /** @description Null for uploaded bundles */
+            mlflowRunId: string | null;
             /** @description Set when the MLflow mirror failed */
             mlflowSyncError: string | null;
             /** @description Null until mirrored to MLflow */
@@ -622,10 +674,16 @@ export interface components {
             /** @description Reported by training; verified in M4 */
             reportedSha256: string | null;
             signature: components["schemas"]["SignatureDto"];
+            sizeBytes: number | null;
+            /** @enum {string} */
+            source: "MLFLOW_RUN" | "UPLOAD";
             sourceUri: string;
             /** @enum {string} */
             status: "PENDING_VALIDATION" | "VALIDATING" | "VALIDATED" | "REJECTED";
             trainingDataset: components["schemas"]["DatasetVersionDto"] | null;
+            /** Format: date-time */
+            validatedAt: string | null;
+            validationAttempts: number;
             version: number;
         };
         ModelVersionSummaryDto: {
@@ -638,9 +696,12 @@ export interface components {
             metrics: {
                 [key: string]: number;
             };
-            mlflowRunId: string;
+            /** @description Null for uploaded bundles */
+            mlflowRunId: string | null;
             /** @description Null until mirrored to MLflow */
             mlflowVersion: string | null;
+            /** @enum {string} */
+            source: "MLFLOW_RUN" | "UPLOAD";
             /** @enum {string} */
             status: "PENDING_VALIDATION" | "VALIDATING" | "VALIDATED" | "REJECTED";
             version: number;
@@ -794,6 +855,41 @@ export interface components {
             /** Format: uuid */
             id: string;
             name: string;
+        };
+        ValidationCheckDto: {
+            detail: string;
+            /** @example V6 */
+            id: string;
+            /** @example Only allow-listed operator domains */
+            name: string;
+            /** @description null = skipped */
+            passed: boolean | null;
+        };
+        ValidationHistoryDto: {
+            attempts: number;
+            history: components["schemas"]["ValidationReportDto"][];
+            latest: components["schemas"]["ValidationReportDto"] | null;
+            /** @description True if the last attempt could not run and may be retried */
+            retryable: boolean;
+            /** @enum {string} */
+            status: "PENDING_VALIDATION" | "VALIDATING" | "VALIDATED" | "REJECTED";
+        };
+        ValidationReportDto: {
+            attempt: number;
+            checks: components["schemas"]["ValidationCheckDto"][];
+            /** Format: date-time */
+            createdAt: string;
+            facts: {
+                [key: string]: unknown;
+            };
+            /** Format: uuid */
+            id: string;
+            /**
+             * @description ERROR = could not run (infrastructure)
+             * @enum {string}
+             */
+            result: "PASSED" | "FAILED" | "ERROR";
+            validatorVersion: string;
         };
     };
     responses: never;
@@ -1201,6 +1297,50 @@ export interface operations {
             };
         };
     };
+    Validation_history: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                versionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationHistoryDto"];
+                };
+            };
+        };
+    };
+    Validation_rerun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                versionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationHistoryDto"];
+                };
+            };
+        };
+    };
     Registry_getModel: {
         parameters: {
             query?: never;
@@ -1240,6 +1380,51 @@ export interface operations {
         };
         responses: {
             /** @description Registers a finished MLflow run of this project as the next version (PENDING_VALIDATION). */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelVersionDto"];
+                };
+            };
+        };
+    };
+    Registry_uploadVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                modelId: string;
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** @enum {string} */
+                    framework: "SKLEARN_ONNX" | "PYTORCH_ONNX";
+                    /**
+                     * Format: binary
+                     * @description golden_examples.json (max 1 MB)
+                     */
+                    golden: string;
+                    /**
+                     * Format: binary
+                     * @description model.onnx (max 100 MB)
+                     */
+                    model: string;
+                    /**
+                     * Format: binary
+                     * @description signature.json (max 1 MB)
+                     */
+                    signature: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Stored content-addressed, then validated asynchronously. */
             201: {
                 headers: {
                     [name: string]: unknown;

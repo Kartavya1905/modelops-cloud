@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ALL_PERMISSIONS, can, type Permission } from '../../src/common/authz/permissions';
 import type { Role } from '../../src/generated/prisma/client';
 import { addMember, Client, createTestApp, prismaOf, type Problem, uniqueEmail } from './helpers';
+import { loadBundle } from './bundles';
 import { createRun } from './mlflow-fixtures';
 
 /**
@@ -26,6 +27,8 @@ interface RouteCase {
   name: string;
   permission: Permission;
   call: (c: Ctx) => Promise<Response>;
+  /** statuses that prove the call got past authorization (default: any status below 400) */
+  allowed?: number[];
 }
 
 let counter = 0;
@@ -153,6 +156,30 @@ const ROUTES: RouteCase[] = [
         runId: await createRun(c.experimentId),
       }),
   },
+  {
+    name: 'POST version upload',
+    permission: 'model:register',
+    call: (c) => {
+      const b = loadBundle('sklearn');
+      return c.as.upload(
+        `/orgs/${c.orgId}/models/${c.modelId}/versions/upload`,
+        { framework: b.framework },
+        { model: b.model, signature: b.signature, golden: b.golden },
+      );
+    },
+  },
+  {
+    name: 'GET validation',
+    permission: 'model:read',
+    call: (c) => c.as.get(`/orgs/${c.orgId}/model-versions/${c.versionId}/validation`),
+  },
+  {
+    name: 'POST validation rerun',
+    permission: 'model:register',
+    // the version is still pending, so an authorized caller gets 409 (not retryable), never 403
+    allowed: [409],
+    call: (c) => c.as.post(`/orgs/${c.orgId}/model-versions/${c.versionId}/validation/rerun`),
+  },
 ];
 
 let app: NestExpressApplication;
@@ -208,9 +235,8 @@ describe.each(ROLES)('as %s', (role) => {
     if (!as) throw new Error(`no ${role} client`);
     const res = await route.call({ orgId, projectId, targetUserId: target.userId, as, ...m3 });
     if (can(role, route.permission)) {
-      expect(res.status, `${role} should be allowed ${route.permission}: ${res.text}`).toBeLessThan(
-        400,
-      );
+      const ok = route.allowed ? route.allowed.includes(res.status) : res.status < 400;
+      expect(ok, `${role} should be allowed ${route.permission}: ${res.text}`).toBe(true);
     } else {
       expect(res.status, `${role} should be denied ${route.permission}`).toBe(403);
       expect((res.body as Problem).code).toBe('FORBIDDEN_ROLE');

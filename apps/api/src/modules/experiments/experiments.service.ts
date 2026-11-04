@@ -127,6 +127,7 @@ export class ExperimentsService {
     });
     const out = new Map<string, RegisteredAsDto[]>();
     for (const v of versions) {
+      if (!v.mlflowRunId) continue;
       const list = out.get(v.mlflowRunId) ?? [];
       list.push({
         modelId: v.model.id,

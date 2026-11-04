@@ -22,3 +22,12 @@ Deployments are long-running and can fail half-way. If the API writes to the dat
 - **Enqueue directly from the API:** rejected (dual-write problem).
 - **Postgres-only queue (pg-boss / SKIP LOCKED):** viable and simpler, but the brief asks for BullMQ and its tooling (delays, retries, metrics). The outbox keeps BullMQ replaceable.
 - **Kafka / Temporal:** rejected as too heavy for a local, single-machine footprint.
+
+## Addendum — M4 validation (2026-11-04)
+Model validation is the first BullMQ workload. It uses **state as the outbox** instead of an `outbox_messages` table:
+- The durable intent is the version row itself: `status = PENDING_VALIDATION` is committed in the same transaction that creates the version.
+- After the commit, the API enqueues `validate-<versionId>` on a best-effort basis. If that enqueue is lost (crash, Redis down), the worker's **sweeper** finds every `PENDING_VALIDATION` row and enqueues it (deduplicated by job id). It also returns expired `VALIDATING` leases to pending.
+- Handlers claim with compare-and-set (`PENDING_VALIDATION → VALIDATING`) and finalize with CAS on `VALIDATING`, so duplicate or late jobs are no-ops.
+
+This keeps the guarantee (no lost work, at-least-once delivery, effectively-once transitions) without the dual-write problem, because the enqueue is never the source of truth. Tests cover a deleted Redis job, an expired lease and concurrent duplicate delivery. Deployments (M5) still get the outbox table: one endpoint can have several pending intents (deploy, scale, rollback) that a single status column cannot express.
+

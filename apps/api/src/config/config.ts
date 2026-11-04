@@ -23,6 +23,17 @@ const ConfigSchema = z.object({
   MO_API_DOCS: booleanString('true'),
   MO_MLFLOW_URL: z.url({ protocol: /^https?$/ }).default('http://127.0.0.1:15000'),
   MO_MLFLOW_TIMEOUT_MS: z.coerce.number().int().min(500).max(60_000).default(10_000),
+  // M4: object storage + ML worker + validation queue
+  MO_S3_ENDPOINT: z.url({ protocol: /^https?$/ }).default('http://127.0.0.1:18333'),
+  MO_S3_ACCESS_KEY: z.string().min(8),
+  MO_S3_SECRET_KEY: z.string().min(16),
+  MO_S3_REGION: z.string().min(1).default('us-east-1'),
+  MO_ARTIFACT_BUCKET: z.string().min(3).default('model-artifacts'),
+  MO_ML_WORKER_URL: z.url({ protocol: /^https?$/ }).default('http://127.0.0.1:18100'),
+  MO_ML_WORKER_TOKEN: z.string().min(32, 'must be at least 32 characters'),
+  MO_VALIDATION_SWEEP_MS: z.coerce.number().int().min(200).max(600_000).default(15_000),
+  MO_VALIDATION_LEASE_MS: z.coerce.number().int().min(1000).max(3_600_000).default(600_000),
+  MO_VALIDATION_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(20).default(5),
 });
 
 export interface AppConfig {
@@ -38,6 +49,15 @@ export interface AppConfig {
   apiDocsEnabled: boolean;
   mlflowUrl: string;
   mlflowTimeoutMs: number;
+  s3: {
+    endpoint: string;
+    accessKey: string;
+    secretKey: string;
+    region: string;
+    artifactBucket: string;
+  };
+  mlWorker: { url: string; token: string };
+  validation: { sweepMs: number; leaseMs: number; maxAttempts: number };
 }
 
 export const APP_CONFIG = Symbol('APP_CONFIG');
@@ -68,5 +88,18 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     apiDocsEnabled: c.MO_API_DOCS,
     mlflowUrl: c.MO_MLFLOW_URL.replace(/\/+$/, ''),
     mlflowTimeoutMs: c.MO_MLFLOW_TIMEOUT_MS,
+    s3: {
+      endpoint: c.MO_S3_ENDPOINT,
+      accessKey: c.MO_S3_ACCESS_KEY,
+      secretKey: c.MO_S3_SECRET_KEY,
+      region: c.MO_S3_REGION,
+      artifactBucket: c.MO_ARTIFACT_BUCKET,
+    },
+    mlWorker: { url: c.MO_ML_WORKER_URL.replace(/\/+$/, ''), token: c.MO_ML_WORKER_TOKEN },
+    validation: {
+      sweepMs: c.MO_VALIDATION_SWEEP_MS,
+      leaseMs: c.MO_VALIDATION_LEASE_MS,
+      maxAttempts: c.MO_VALIDATION_MAX_ATTEMPTS,
+    },
   };
 }

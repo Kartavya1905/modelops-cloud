@@ -1,12 +1,12 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
 import {
   ArrowLeftIcon,
-  CircleDashedIcon,
   DatabaseIcon,
+  FileCheck2Icon,
   FlaskConicalIcon,
   PlusIcon,
+  UploadIcon,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
@@ -14,7 +14,6 @@ import { useState } from 'react';
 import { ErrorState, PageHeader, PermissionGate, TableSkeleton } from '@/components/common/states';
 import { Button } from '@/components/ui/button';
 import {
-  Alert,
   Badge,
   Card,
   CardContent,
@@ -29,10 +28,8 @@ import {
   Tr,
 } from '@/components/ui/primitives';
 import { useOrgId } from '@/features/org/org-shell';
-import { api, unwrap } from '@/lib/api/client';
-import { qk } from '@/lib/query/keys';
 import { formatDateTime, formatRelative } from '@/lib/utils';
-import { useModel, useModels, useRuns } from './api';
+import { useModel, useModels, useModelVersion, useRuns } from './api';
 import {
   formatMetric,
   FrameworkBadge,
@@ -41,6 +38,8 @@ import {
   VersionStatusBadge,
 } from './labels';
 import { RegisterDialog } from './register-dialog';
+import { UploadDialog } from './upload-dialog';
+import { ValidationCard } from './validation-card';
 
 const BackLink = ({ href, label }: { href: string; label: string }) => (
   <Link
@@ -59,6 +58,7 @@ export function ModelPage() {
   const runs = useRuns(orgId, projectId);
   const models = useModels(orgId, projectId);
   const [registerOpen, setRegisterOpen] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(false);
 
   if (model.isPending) return <TableSkeleton rows={4} />;
   if (model.isError) return <ErrorState error={model.error} onRetry={() => void model.refetch()} />;
@@ -76,21 +76,29 @@ export function ModelPage() {
         }
         actions={
           <PermissionGate orgId={orgId} permission="model:register">
-            <Button onClick={() => setRegisterOpen(true)} disabled={!runs.data}>
-              <PlusIcon aria-hidden /> Register version
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => setUploadOpen(true)}>
+                <UploadIcon aria-hidden /> Upload bundle
+              </Button>
+              <Button onClick={() => setRegisterOpen(true)} disabled={!runs.data}>
+                <PlusIcon aria-hidden /> Register version
+              </Button>
+            </div>
           </PermissionGate>
         }
       />
       <Card>
         <CardHeader>
           <CardTitle>Versions</CardTitle>
-          <CardDescription>Immutable. Each points at one MLflow run’s ONNX bundle.</CardDescription>
+          <CardDescription>
+            Immutable. Each is one ONNX bundle, from an MLflow run or uploaded directly, and must
+            pass validation before it can be deployed.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {m.versions.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No versions yet. Register a finished run from this project.
+              No versions yet. Register a finished run from this project or upload a bundle.
             </p>
           ) : (
             <Table>
@@ -100,7 +108,7 @@ export function ModelPage() {
                   <Th>Status</Th>
                   <Th className="hidden md:table-cell">Framework</Th>
                   <Th>ROC-AUC</Th>
-                  <Th className="hidden lg:table-cell">Run</Th>
+                  <Th className="hidden lg:table-cell">Source</Th>
                   <Th className="hidden sm:table-cell">Registered</Th>
                 </Tr>
               </THead>
@@ -125,7 +133,11 @@ export function ModelPage() {
                       {formatMetric('test_roc_auc', v.metrics.test_roc_auc)}
                     </Td>
                     <Td className="hidden font-mono text-xs lg:table-cell">
-                      {v.mlflowRunId.slice(0, 8)}
+                      {v.mlflowRunId ? (
+                        `run ${v.mlflowRunId.slice(0, 8)}`
+                      ) : (
+                        <span className="font-sans text-muted-foreground">upload</span>
+                      )}
                     </Td>
                     <Td className="hidden text-muted-foreground sm:table-cell">
                       {formatRelative(v.createdAt)}
@@ -148,6 +160,17 @@ export function ModelPage() {
           fixedModelId={m.id}
         />
       )}
+      {uploadOpen && (
+        <UploadDialog
+          orgId={orgId}
+          projectId={projectId}
+          modelId={m.id}
+          modelName={m.name}
+          nextVersion={m.versionCount + 1}
+          open
+          onOpenChange={setUploadOpen}
+        />
+      )}
     </div>
   );
 }
@@ -155,15 +178,7 @@ export function ModelPage() {
 export function ModelVersionPage() {
   const orgId = useOrgId();
   const { versionId } = useParams<{ versionId: string }>();
-  const query = useQuery({
-    queryKey: qk.modelVersion(orgId, versionId),
-    queryFn: () =>
-      unwrap(
-        api.GET('/api/v1/orgs/{orgId}/model-versions/{versionId}', {
-          params: { path: { orgId, versionId } },
-        }),
-      ),
-  });
+  const query = useModelVersion(orgId, versionId);
 
   if (query.isPending) return <TableSkeleton rows={5} />;
   if (query.isError) return <ErrorState error={query.error} onRetry={() => void query.refetch()} />;
@@ -184,17 +199,7 @@ export function ModelVersionPage() {
         }
       />
 
-      {v.status === 'PENDING_VALIDATION' && (
-        <Alert>
-          <span className="flex items-center gap-2 font-medium">
-            <CircleDashedIcon className="size-4" aria-hidden /> Awaiting validation
-          </span>
-          <span className="text-muted-foreground">
-            Before a version can be deployed, the platform checks its ONNX graph, operators,
-            signature, checksum and golden examples. That validator arrives in Milestone 4.
-          </span>
-        </Alert>
-      )}
+      <ValidationCard orgId={orgId} version={v} />
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
@@ -202,6 +207,13 @@ export function ModelVersionPage() {
             <CardTitle>Metrics at registration</CardTitle>
           </CardHeader>
           <CardContent>
+            {!HEADLINE_METRICS.some((k) => v.metrics[k] !== undefined) && (
+              <p className="text-sm text-muted-foreground">
+                {v.mlflowRunId
+                  ? 'The run logged none of the headline metrics.'
+                  : 'Uploaded bundles carry no training metrics.'}
+              </p>
+            )}
             <dl className="grid grid-cols-2 gap-4">
               {HEADLINE_METRICS.filter((k) => v.metrics[k] !== undefined).map((k) => (
                 <div key={k} className="grid gap-1">
@@ -227,8 +239,16 @@ export function ModelVersionPage() {
                 aria-hidden
               />
               <div className="grid gap-0.5">
-                <span className="font-medium">MLflow run</span>
-                <span className="font-mono text-xs break-all">{v.mlflowRunId}</span>
+                <span className="font-medium">
+                  {v.mlflowRunId ? 'MLflow run' : 'Uploaded bundle'}
+                </span>
+                {v.mlflowRunId ? (
+                  <span className="font-mono text-xs break-all">{v.mlflowRunId}</span>
+                ) : (
+                  <span className="text-xs text-muted-foreground">
+                    Uploaded directly, not trained through MLflow
+                  </span>
+                )}
                 <span className="text-xs text-muted-foreground">
                   Registry mirror:{' '}
                   {v.mlflowVersion ? `MLflow version ${v.mlflowVersion}` : 'pending'}
@@ -256,14 +276,27 @@ export function ModelVersionPage() {
                 )}
               </div>
             </div>
-            <div className="grid gap-0.5">
-              <span className="font-medium">Bundle</span>
-              <span className="font-mono text-xs break-all">{v.sourceUri}</span>
-              {v.reportedSha256 && (
-                <span className="font-mono text-xs break-all text-muted-foreground">
-                  reported sha256 {v.reportedSha256} (verified in M4)
-                </span>
-              )}
+            <div className="flex gap-3">
+              <FileCheck2Icon
+                className="mt-0.5 size-4 shrink-0 text-muted-foreground"
+                aria-hidden
+              />
+              <div className="grid gap-0.5">
+                <span className="font-medium">Bundle</span>
+                <span className="font-mono text-xs break-all">{v.sourceUri}</span>
+                {v.artifactSha256 ? (
+                  <span className="font-mono text-xs break-all text-muted-foreground">
+                    stored sha256 {v.artifactSha256}
+                    {v.sizeBytes !== null && ` · ${v.sizeBytes.toLocaleString()} bytes`}
+                  </span>
+                ) : (
+                  v.reportedSha256 && (
+                    <span className="font-mono text-xs break-all text-muted-foreground">
+                      reported sha256 {v.reportedSha256} (checked when ingested)
+                    </span>
+                  )
+                )}
+              </div>
             </div>
           </CardContent>
         </Card>

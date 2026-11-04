@@ -1032,6 +1032,92 @@
         ]
       }
     },
+    "/api/v1/orgs/{orgId}/model-versions/{versionId}/validation": {
+      "get": {
+        "operationId": "Validation_history",
+        "parameters": [
+          {
+            "name": "orgId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "versionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationHistoryDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "validation"
+        ]
+      }
+    },
+    "/api/v1/orgs/{orgId}/model-versions/{versionId}/validation/rerun": {
+      "post": {
+        "operationId": "Validation_rerun",
+        "parameters": [
+          {
+            "name": "orgId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "versionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationHistoryDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "validation"
+        ]
+      }
+    },
     "/api/v1/orgs/{orgId}/projects/{projectId}/models": {
       "get": {
         "operationId": "Registry_listModels",
@@ -1252,6 +1338,89 @@
         "responses": {
           "201": {
             "description": "Registers a finished MLflow run of this project as the next version (PENDING_VALIDATION).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelVersionDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "registry"
+        ]
+      }
+    },
+    "/api/v1/orgs/{orgId}/models/{modelId}/versions/upload": {
+      "post": {
+        "operationId": "Registry_uploadVersion",
+        "parameters": [
+          {
+            "name": "orgId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "modelId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "framework",
+                  "model",
+                  "signature",
+                  "golden"
+                ],
+                "properties": {
+                  "framework": {
+                    "type": "string",
+                    "enum": [
+                      "SKLEARN_ONNX",
+                      "PYTORCH_ONNX"
+                    ]
+                  },
+                  "model": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "model.onnx (max 100 MB)"
+                  },
+                  "signature": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "signature.json (max 1 MB)"
+                  },
+                  "golden": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "golden_examples.json (max 1 MB)"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Stored content-addressed, then validated asynchronously.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2246,6 +2415,123 @@
           "differingParams"
         ]
       },
+      "ValidationCheckDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "V6"
+          },
+          "name": {
+            "type": "string",
+            "example": "Only allow-listed operator domains"
+          },
+          "passed": {
+            "type": "boolean",
+            "nullable": true,
+            "description": "null = skipped"
+          },
+          "detail": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "passed",
+          "detail"
+        ]
+      },
+      "ValidationReportDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "attempt": {
+            "type": "number"
+          },
+          "result": {
+            "type": "string",
+            "enum": [
+              "PASSED",
+              "FAILED",
+              "ERROR"
+            ],
+            "description": "ERROR = could not run (infrastructure)"
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ValidationCheckDto"
+            }
+          },
+          "facts": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "validatorVersion": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "attempt",
+          "result",
+          "checks",
+          "facts",
+          "validatorVersion",
+          "createdAt"
+        ]
+      },
+      "ValidationHistoryDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING_VALIDATION",
+              "VALIDATING",
+              "VALIDATED",
+              "REJECTED"
+            ]
+          },
+          "attempts": {
+            "type": "number"
+          },
+          "latest": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ValidationReportDto"
+              }
+            ]
+          },
+          "history": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ValidationReportDto"
+            }
+          },
+          "retryable": {
+            "type": "boolean",
+            "description": "True if the last attempt could not run and may be retried"
+          }
+        },
+        "required": [
+          "status",
+          "attempts",
+          "latest",
+          "history",
+          "retryable"
+        ]
+      },
       "ModelVersionSummaryDto": {
         "type": "object",
         "properties": {
@@ -2272,8 +2558,17 @@
               "REJECTED"
             ]
           },
+          "source": {
+            "type": "string",
+            "enum": [
+              "MLFLOW_RUN",
+              "UPLOAD"
+            ]
+          },
           "mlflowRunId": {
-            "type": "string"
+            "type": "string",
+            "nullable": true,
+            "description": "Null for uploaded bundles"
           },
           "mlflowVersion": {
             "type": "string",
@@ -2296,6 +2591,7 @@
           "version",
           "framework",
           "status",
+          "source",
           "mlflowRunId",
           "mlflowVersion",
           "metrics",
@@ -2660,8 +2956,17 @@
               "REJECTED"
             ]
           },
+          "source": {
+            "type": "string",
+            "enum": [
+              "MLFLOW_RUN",
+              "UPLOAD"
+            ]
+          },
           "mlflowRunId": {
-            "type": "string"
+            "type": "string",
+            "nullable": true,
+            "description": "Null for uploaded bundles"
           },
           "mlflowVersion": {
             "type": "string",
@@ -2701,6 +3006,32 @@
               }
             ]
           },
+          "artifactSha256": {
+            "type": "string",
+            "nullable": true,
+            "description": "SHA-256 of model.onnx in content-addressed storage (null until ingested)"
+          },
+          "sizeBytes": {
+            "type": "number",
+            "nullable": true
+          },
+          "validationAttempts": {
+            "type": "number"
+          },
+          "validatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "latestValidation": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ValidationReportDto"
+              }
+            ]
+          },
           "mlflowSyncError": {
             "type": "string",
             "nullable": true,
@@ -2712,6 +3043,7 @@
           "version",
           "framework",
           "status",
+          "source",
           "mlflowRunId",
           "mlflowVersion",
           "metrics",
@@ -2721,6 +3053,11 @@
           "reportedSha256",
           "signature",
           "trainingDataset",
+          "artifactSha256",
+          "sizeBytes",
+          "validationAttempts",
+          "validatedAt",
+          "latestValidation",
           "mlflowSyncError"
         ]
       }

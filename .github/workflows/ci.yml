@@ -63,9 +63,33 @@ jobs:
       # Includes the pinned dataset hash test: proves the synthetic data is byte-identical on Linux.
       - run: uv run pytest
 
+  ml-worker:
+    name: Validator service (ruff · pytest · image)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: services/ml-worker
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2 (no floating major tag exists)
+        with:
+          enable-cache: true
+          cache-dependency-glob: services/ml-worker/uv.lock
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      # On Linux the sandbox's rlimits are real, so the memory/CPU-limit tests run (not skipped).
+      - run: uv run pytest
+      # The same tests inside the production image, with a read-only root filesystem.
+      - name: Test the container image
+        run: |
+          docker build --target test -t modelops/ml-worker:test .
+          docker run --rm --read-only --tmpfs /tmp modelops/ml-worker:test
+
   stack:
     name: integration · smoke · e2e
-    needs: [quality, ml]
+    needs: [quality, ml, ml-worker]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -86,13 +110,14 @@ jobs:
       - name: Apply database migrations
         run: pnpm db:deploy
 
-      - name: Integration tests (real Postgres + Redis, throwaway database)
+      - name: Integration tests (real Postgres, Redis, MLflow, S3 and ml-worker; throwaway database)
         run: pnpm test:integration
 
       - name: Build and start API + web
         run: |
           pnpm build
           nohup pnpm --filter @modelops/api start > api.log 2>&1 &
+          nohup pnpm --filter @modelops/api start:worker > worker.log 2>&1 &
           nohup pnpm --filter @modelops/web start > web.log 2>&1 &
           for url in http://127.0.0.1:4000/api/v1/health/live http://127.0.0.1:3300/login; do
             for i in $(seq 1 60); do
@@ -130,7 +155,7 @@ jobs:
         run: |
           pnpm dev:ps || true
           pnpm dev:logs || true
-          cat api.log web.log || true
+          cat api.log worker.log web.log || true
 
       - name: Tear down
         if: always()

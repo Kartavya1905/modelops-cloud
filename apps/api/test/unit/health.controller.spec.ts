@@ -31,6 +31,15 @@ async function bootWith(checks: DependencyCheck[]): Promise<INestApplication> {
     apiDocsEnabled: false,
     mlflowUrl: 'http://127.0.0.1:15000',
     mlflowTimeoutMs: 1000,
+    s3: {
+      endpoint: 'http://unused',
+      accessKey: 'a',
+      secretKey: 's',
+      region: 'us-east-1',
+      artifactBucket: 'b',
+    },
+    mlWorker: { url: 'http://unused', token: 't' },
+    validation: { sweepMs: 1000, leaseMs: 1000, maxAttempts: 1 },
   };
   const moduleRef = await Test.createTestingModule({
     controllers: [HealthController],

@@ -1,0 +1,43 @@
+{
+  "signatureVersion": 1,
+  "task": "binary_classification",
+  "inputs": [
+    {
+      "name": "features",
+      "dtype": "float32",
+      "shape": [
+        -1,
+        6
+      ],
+      "features": [
+        "tenure_months",
+        "monthly_charges",
+        "support_tickets",
+        "contract_type",
+        "late_payments",
+        "usage_hours"
+      ]
+    }
+  ],
+  "outputs": [
+    {
+      "name": "label",
+      "dtype": "int64",
+      "shape": [
+        -1
+      ]
+    },
+    {
+      "name": "probabilities",
+      "dtype": "float32",
+      "shape": [
+        -1,
+        2
+      ],
+      "classes": [
+        0,
+        1
+      ]
+    }
+  ]
+}

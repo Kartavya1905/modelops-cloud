@@ -31,7 +31,7 @@ process.loadEnvFile(envFile);
 const env = process.env;
 const infraOnly = process.argv.includes('--infra-only');
 
-const EXPECTED_SERVICES = ['postgres', 'redis', 'seaweedfs', 'mlflow'];
+const EXPECTED_SERVICES = ['postgres', 'redis', 'seaweedfs', 'mlflow', 'ml-worker'];
 const EXPECTED_BUCKETS = [
   'mlflow-artifacts',
   'model-artifacts',
@@ -41,6 +41,7 @@ const EXPECTED_BUCKETS = [
   'uploads-staging',
 ];
 const mlflowUrl = env.MO_MLFLOW_URL;
+const mlWorkerUrl = env.MO_ML_WORKER_URL;
 const apiUrl = env.MO_API_URL;
 const webUrl = `http://127.0.0.1:${env.MO_PORT_WEB ?? '3300'}`;
 
@@ -261,9 +262,47 @@ await check('s3: wrong credentials are rejected', async () => {
   throw new Error('request with wrong credentials succeeded');
 });
 
+await check('s3: validator identity can read model-artifacts but never write', async () => {
+  const ro = s3Client(env.MO_S3_VALIDATOR_ACCESS_KEY, env.MO_S3_VALIDATOR_SECRET_KEY);
+  const got = await ro.send(new GetObjectCommand({ Bucket: 'model-artifacts', Key: key }));
+  assert(sha256(Buffer.from(await got.Body.transformToByteArray())) === sha256(payload), 'read');
+  for (const attempt of [
+    () => ro.send(new PutObjectCommand({ Bucket: 'model-artifacts', Key: key, Body: 'x' })),
+    () => ro.send(new DeleteObjectCommand({ Bucket: 'model-artifacts', Key: key })),
+    () => ro.send(new GetObjectCommand({ Bucket: 'datasets', Key: 'anything' })),
+  ]) {
+    try {
+      await attempt();
+    } catch (err) {
+      const status = err.$metadata?.httpStatusCode;
+      assert(status === 403, `expected 403, got ${status} (${err.name})`);
+      continue;
+    }
+    throw new Error('validator identity was allowed a write or another bucket');
+  }
+  return 'read ok; put, delete, other bucket: HTTP 403';
+});
+
 await s3
   .send(new DeleteObjectCommand({ Bucket: 'model-artifacts', Key: key }))
   .catch(() => undefined);
+
+// ------------------------------------------------------------------ ML worker
+await check('ml-worker: /healthz returns OK', async () => {
+  const r = await http(`${mlWorkerUrl}/healthz`);
+  assert(r.status === 200, `HTTP ${r.status}: ${r.text.slice(0, 120)}`);
+  return 'HTTP 200';
+});
+
+await check('ml-worker: /v1/validate refuses requests without the shared token', async () => {
+  const r = await http(`${mlWorkerUrl}/v1/validate`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{}',
+  });
+  assert(r.status === 401, `expected 401, got ${r.status}`);
+  return 'HTTP 401';
+});
 
 // --------------------------------------------------------------------- MLflow
 await check('mlflow: /health returns OK', async () => {

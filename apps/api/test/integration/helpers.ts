@@ -14,8 +14,13 @@ import { setupApp } from '../../src/setup-app';
 export const API = '/api/v1';
 export const PASSWORD = 'correct horse battery staple';
 
-/** Boots the full AppModule (all guards, filters, pipes) against the throwaway test database. */
-export async function createTestApp(): Promise<NestExpressApplication> {
+/**
+ * Boots the full AppModule (all guards, filters, pipes) against the throwaway test database.
+ * `env` overrides individual settings (e.g. an unreachable ML worker for failure tests).
+ */
+export async function createTestApp(
+  env: Record<string, string> = {},
+): Promise<NestExpressApplication> {
   const envFile = join(process.cwd(), '..', '..', '.env');
   if (existsSync(envFile)) process.loadEnvFile(envFile);
   const config = loadConfig({
@@ -23,6 +28,7 @@ export async function createTestApp(): Promise<NestExpressApplication> {
     DATABASE_URL: inject('databaseUrl'),
     REDIS_URL: inject('redisUrl'),
     MO_API_DOCS: 'false',
+    ...env,
   });
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
     .overrideProvider(APP_CONFIG)
@@ -86,6 +92,13 @@ export class Client {
   }
   patch(path: string, body?: object) {
     return this.agent.patch(`${API}${path}`).set('x-csrf-token', this.session.csrfToken).send(body);
+  }
+  /** multipart/form-data: text fields plus named file parts. */
+  upload(path: string, fields: Record<string, string>, files: Record<string, Buffer>) {
+    let req = this.agent.post(`${API}${path}`).set('x-csrf-token', this.session.csrfToken);
+    for (const [k, v] of Object.entries(fields)) req = req.field(k, v);
+    for (const [k, v] of Object.entries(files)) req = req.attach(k, v, `${k}.bin`);
+    return req;
   }
   delete(path: string) {
     return this.agent.delete(`${API}${path}`).set('x-csrf-token', this.session.csrfToken);

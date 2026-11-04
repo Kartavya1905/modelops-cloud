@@ -26,6 +26,7 @@ Phase 0 design set. Read in order for the full picture, or jump to what an inter
 | M1 | [Repository and local environment](milestones/m1-local-environment.md) |
 | M2 | [Authentication, organizations, projects, frontend foundation](milestones/m2-auth-orgs-projects.md) |
 | M3 | [MLflow integration, experiments and model registry](milestones/m3-experiments-registry.md) |
+| M4 | [Model validation and artifact storage](milestones/m4-validation-artifacts.md) |
 
 ## Architecture Decision Records
 

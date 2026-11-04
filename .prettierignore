@@ -14,3 +14,5 @@ packages/api-contract/src/schema.d.ts
 **/__pycache__
 **/.pytest_cache
 **/.ruff_cache
+# Generated ONNX bundles (ml/modelops_ml/fixtures.py): byte-exact, never reformatted
+tests/fixtures/bundles

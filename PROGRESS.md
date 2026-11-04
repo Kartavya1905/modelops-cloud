@@ -27,8 +27,8 @@ Legend: ✅ done · 🚧 in progress · ⬜ not started
 |---|---|---|---|
 | M1 | Repository and local environment | ✅ | [m1-local-environment.md](docs/milestones/m1-local-environment.md): smoke 17/17, unit 25/25 (2026-11-03); **CI green on Linux**: [run 41775591802](https://github.com/Kartavya1905/modelops-cloud/actions/runs/41775591802) |
 | M2 | Auth, orgs, projects, frontend foundation | ✅ | [m2-auth-orgs-projects.md](docs/milestones/m2-auth-orgs-projects.md): unit 33 + 27, integration 88/88, e2e 4/4 incl. axe, smoke 17/17 (2026-11-04); **CI green on Linux**: [run 41784543609](https://github.com/Kartavya1905/modelops-cloud/actions/runs/41784543609) |
-| M3 | MLflow, registry, experiments | 🚧 done locally; CI run pending push | [m3-experiments-registry.md](docs/milestones/m3-experiments-registry.md): ML 32, unit 54 + 35, integration 142/142, e2e 5/5 with real training (2026-11-04) |
-| M4 | Model validation and artifact storage | ⬜ | — |
+| M3 | MLflow, registry, experiments | ✅ | [m3-experiments-registry.md](docs/milestones/m3-experiments-registry.md): ML 32, unit 54 + 35, integration 142/142, e2e 5/5 with real training (2026-11-04); **CI green on Linux**: [run 41792113922](https://github.com/Kartavya1905/modelops-cloud/actions/runs/41792113922) |
+| M4 | Model validation and artifact storage | 🚧 | [m4-validation-artifacts.md](docs/milestones/m4-validation-artifacts.md): validator 31 (Linux image), ML 32, unit 57 + 35, integration 172/172, e2e 6/6, smoke 20/20 (2026-11-04); **CI on Linux pending** |
 | M5 | Inference deployment pipeline | ⬜ | — |
 | M6 | Playground and operational dashboard | ⬜ | — |
 | M7 | Drift monitoring and evaluation | ⬜ | — |
@@ -53,7 +53,10 @@ Legend: ✅ done · 🚧 in progress · ⬜ not started
 - [x] Outbox + idempotency tables → deferred from M2 to **M5**, where they are first used
 - [x] scikit-learn ONNX parity (risk R6) → scaler removed from the GBM pipeline; parity 3e-7
 - [x] MLflow aliases (`champion`/`challenger`) → deferred to **M7** with the evaluation gate
+- [x] Bundle upload → direct multipart to the API with hard limits instead of presigned URLs (M4 deviation; revisit in M9)
+- [x] Validation queue → version status as the durable intent + sweeper, no outbox table (ADR-0004 addendum); outbox still in **M5**
+- [x] SEC-6 (deploy-unvalidated trigger) → **M5**, with revisions
 
 ## Next actions
-1. Commit and push M3, then get a green CI run (closes M3)
-2. Start M4: model validation and artifact storage
+1. Commit and push M4; tick it once CI is green on Linux
+2. Start M5: inference deployment pipeline

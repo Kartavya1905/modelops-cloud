@@ -55,7 +55,7 @@ All host ports bind to `127.0.0.1` and are set in `.env`. Defaults deliberately 
 | Gateway | `18080` | M5 | Inference API |
 | Prometheus | `19090` | M10 | observability profile |
 | Grafana | `13001` | M10 | observability profile |
-| ML worker | — | M4 | internal only |
+| ML worker (validator) | `18100` | M4 | Bound to 127.0.0.1; every request needs `X-ModelOps-Token` (238 MiB measured idle) |
 | Model servers | — | M5 | internal `inference` network only |
 
 ## 4. Memory budget

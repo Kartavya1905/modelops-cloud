@@ -1,0 +1,14 @@
+{
+  "sklearn": {
+    "framework": "SKLEARN_ONNX",
+    "sha256": "7285b1f27afe258800d5c9c73f0b74851900a6e77820a26bd3edb9af6ea4b140",
+    "bytes": 5997,
+    "datasetSha256": "6bf52cb8b764f6ac72ea3f568dd7bd19981dd198c661baeb377f2652ef4eb91e"
+  },
+  "pytorch": {
+    "framework": "PYTORCH_ONNX",
+    "sha256": "cb545fae551d20513bcd551b95435c9b3c67cd60d97641c89c960b3be51a3ae1",
+    "bytes": 14970,
+    "datasetSha256": "6bf52cb8b764f6ac72ea3f568dd7bd19981dd198c661baeb377f2652ef4eb91e"
+  }
+}

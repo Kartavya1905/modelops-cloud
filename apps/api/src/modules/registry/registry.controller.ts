@@ -1,5 +1,23 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
-import { ApiCookieAuth, ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  UploadedFiles,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileFieldsInterceptor } from '@nestjs/platform-express';
+import {
+  ApiBody,
+  ApiConsumes,
+  ApiCookieAuth,
+  ApiCreatedResponse,
+  ApiOkResponse,
+  ApiTags,
+} from '@nestjs/swagger';
+import { Errors } from '../../common/errors/app-error';
 import { OrgAccessGuard, RequirePermission } from '../../common/authz/org-access.guard';
 import { Actor, type ActorContext } from '../../common/request-context/request-context';
 import { UuidParam } from '../../common/validation';
@@ -14,6 +32,9 @@ import {
 import { RegistryService } from './registry.service';
 
 const OrgId = () => Param('orgId', new UuidParam('Organization'));
+type BundlePart = 'model' | 'signature' | 'golden';
+/** The part of a multer file this route uses (memory storage keeps the bytes in `buffer`). */
+type UploadedPart = { buffer: Buffer };
 
 @ApiTags('registry')
 @ApiCookieAuth('session')
@@ -75,6 +96,70 @@ export class RegistryController {
     @Actor() actor: ActorContext,
   ) {
     return this.registry.importVersion(orgId, modelId, dto.runId, actor);
+  }
+
+  @Post('models/:modelId/versions/upload')
+  @RequirePermission('model:register')
+  @UseInterceptors(
+    FileFieldsInterceptor(
+      [
+        { name: 'model', maxCount: 1 },
+        { name: 'signature', maxCount: 1 },
+        { name: 'golden', maxCount: 1 },
+      ],
+      // In-memory (Nest's default) with hard limits enforced while the request streams in:
+      // a larger part aborts the upload with 413.
+      {
+        limits: { fileSize: 100 * 1024 * 1024, files: 3, fields: 2, parts: 5 },
+      },
+    ),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['framework', 'model', 'signature', 'golden'],
+      properties: {
+        framework: { type: 'string', enum: ['SKLEARN_ONNX', 'PYTORCH_ONNX'] },
+        model: { type: 'string', format: 'binary', description: 'model.onnx (max 100 MB)' },
+        signature: { type: 'string', format: 'binary', description: 'signature.json (max 1 MB)' },
+        golden: {
+          type: 'string',
+          format: 'binary',
+          description: 'golden_examples.json (max 1 MB)',
+        },
+      },
+    },
+  })
+  @ApiCreatedResponse({
+    type: ModelVersionDto,
+    description: 'Stored content-addressed, then validated asynchronously.',
+  })
+  uploadVersion(
+    @OrgId() orgId: string,
+    @Param('modelId', new UuidParam('Model')) modelId: string,
+    @Body('framework') framework: unknown,
+    @UploadedFiles()
+    files: Partial<Record<BundlePart, UploadedPart[]>> | undefined,
+    @Actor() actor: ActorContext,
+  ) {
+    const one = (k: BundlePart) => files?.[k]?.[0]?.buffer;
+    const model = one('model');
+    const signature = one('signature');
+    const golden = one('golden');
+    if (!model || !signature || !golden || typeof framework !== 'string') {
+      throw Errors.validation(
+        (['framework', 'model', 'signature', 'golden'] as const)
+          .filter((k) => (k === 'framework' ? typeof framework !== 'string' : !one(k)))
+          .map((field) => ({ field, message: 'is required' })),
+      );
+    }
+    return this.registry.uploadVersion(
+      orgId,
+      modelId,
+      { framework, model, signature, golden },
+      actor,
+    );
   }
 
   @Get('model-versions/:versionId')

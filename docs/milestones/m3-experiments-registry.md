@@ -1,6 +1,6 @@
 # Milestone 3 — MLflow Integration, Experiments and Model Registry
 
-> **Status: done locally on Windows 11 (2026-11-04).** CI (now with a Python job and real training inside the browser test) runs on the next push. PROGRESS.md marks M3 as 🚧 until it is green on Linux.
+> **Status: done (2026-11-04).** Verified locally on Windows 11 and in CI on Linux: [run 41792113922](https://github.com/Kartavya1905/modelops-cloud/actions/runs/41792113922). That run includes the Python job, which reproduced the pinned dataset SHA-256 on Linux, and the browser test that trains real models.
 
 ![Compare runs](../images/m3-compare.png)
 
@@ -131,6 +131,7 @@ Lint (ESLint strict + ruff), Prettier + ruff format, tsc ×4, next build, contra
 | axe (e2e) | Amber "Awaiting validation" badge at **3.27:1** | Darker light-mode `--warning` (4.5:1) |
 | axe (e2e, flaky) | Contrast measured on a toast mid-fade | Shared helper waits for animations to settle before scanning |
 | Me | `pnpm format` (Prettier) ran over `ml/.venv`, i.e. third-party package files | `.venv` ignored by Prettier and ESLint; venv rebuilt cleanly from the lockfile |
+| First M3 CI run | `astral-sh/setup-uv@v10` doesn't exist (the action publishes only exact tags) | Pinned to v10.3.2 by commit SHA |
 | Screenshot review | Compare chart legend listed loss curves for the GBM run, which has none; axis label clipped | Lines only where a series exists; label removed |
 
 ## I. Expected behaviour
@@ -158,11 +159,11 @@ Lint (ESLint strict + ruff), Prettier + ruff format, tsc ×4, next build, contra
 | Criterion | Status |
 |---|---|
 | Both models trained with one command; runs and metrics visible and comparable in the UI | ✅ `pnpm ml:train`; e2e trains both and compares |
-| Dataset determinism (same seed → same SHA-256) | ✅ pinned hash test (Linux check in CI ⏳) |
+| Dataset determinism (same seed → same SHA-256) | ✅ pinned hash identical on Windows and Linux (CI) |
 | ONNX parity (max abs diff < 1e-5) | ✅ both models |
 | MLflow adapter integration test; compare endpoint test | ✅ 54 new integration tests against real MLflow |
 | Model registry with versions and lineage | ✅ (aliases deferred to M7, see deviations) |
-| CI green on Linux | ⏳ next push |
+| CI green on Linux | ✅ run 41792113922 (after pinning setup-uv by SHA, see below) |
 
 ## L. Completion checklist
 
@@ -174,4 +175,4 @@ Lint (ESLint strict + ruff), Prettier + ruff format, tsc ×4, next build, contra
 - [x] Web: runs, compare charts, models, register dialog, version page
 - [x] Python, unit, integration, component, e2e (real training) + axe tests
 - [x] CI: `ml` job + ML env in the stack job
-- [ ] Green CI run on Linux ← next action
+- [x] Green CI run on Linux

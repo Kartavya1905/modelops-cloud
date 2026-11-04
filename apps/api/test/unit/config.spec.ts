@@ -5,6 +5,9 @@ const valid = {
   DATABASE_URL: 'postgresql://modelops_app:s3cret@127.0.0.1:15432/modelops',
   REDIS_URL: 'redis://:s3cret@127.0.0.1:16379/0',
   MO_API_SESSION_PEPPER: 'x'.repeat(64),
+  MO_S3_ACCESS_KEY: 'a'.repeat(20),
+  MO_S3_SECRET_KEY: 's'.repeat(40),
+  MO_ML_WORKER_TOKEN: 't'.repeat(64),
 };
 
 describe('loadConfig', () => {

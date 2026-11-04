@@ -26,3 +26,7 @@ export type ModelVersion = Schemas['ModelVersionDto'];
 export type ModelVersionSummary = Schemas['ModelVersionSummaryDto'];
 export type DatasetVersion = Schemas['DatasetVersionDto'];
 export type Signature = Schemas['SignatureDto'];
+// M4: validation
+export type ValidationCheck = Schemas['ValidationCheckDto'];
+export type ValidationReport = Schemas['ValidationReportDto'];
+export type ValidationHistory = Schemas['ValidationHistoryDto'];
