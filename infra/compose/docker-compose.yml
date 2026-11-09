@@ -1,4 +1,4 @@
-# ModelOps Cloud — core local infrastructure (Milestone 1).
+# ModelOps Cloud — local platform: infrastructure (M1), validator (M4), data plane (M5).
 #
 # Started through `pnpm dev:up`, which runs:
 #   docker compose --project-name modelops --env-file .env -f infra/compose/docker-compose.yml up -d --build --wait
@@ -8,6 +8,9 @@
 #   - Every service has a healthcheck; `--wait` blocks until all are healthy.
 #   - Memory/CPU limits keep the whole stack laptop-sized (see docs/10-local-development.md).
 #   - Object storage is SeaweedFS (S3 API), not MinIO — see docs/adr/0003.
+#   - Model servers (one container per revision, created by the worker) live on the
+#     `inference` network, which is `internal: true`: no internet, no Postgres, no Redis.
+#     Only the gateway and object storage (presigned downloads) are attached to it.
 
 name: modelops
 
@@ -112,7 +115,7 @@ services:
     deploy:
       resources:
         limits: { cpus: '1.0', memory: 512M }
-    networks: [backend]
+    networks: [backend, inference]
 
   # One-shot job: create the platform's buckets (idempotent), then exit 0.
   storage-init:
@@ -234,9 +237,89 @@ services:
         condition: service_healthy
     networks: [backend]
 
+  # --------------------------------------------- Docker socket proxy (M5, worker only)
+  # The worker creates model-server containers through this proxy, which only allows the
+  # containers and images APIs (no exec, volumes, swarm, secrets...). ADR-0005: accepted
+  # local-dev risk, documented in docs/06; bound to 127.0.0.1.
+  docker-proxy:
+    image: tecnativa/docker-socket-proxy:v0.5.0
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      CONTAINERS: 1
+      POST: 1
+      ALLOW_START: 1
+      ALLOW_STOP: 1
+      IMAGES: 1
+      EXEC: 0
+      VOLUMES: 0
+      NETWORKS: 0
+      BUILD: 0
+      SECRETS: 0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - '127.0.0.1:${MO_PORT_DOCKER_PROXY:-12375}:2375'
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:2375/_ping']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    deploy:
+      resources:
+        limits: { cpus: '0.25', memory: 64M }
+    networks: [backend]
+
+  # ------------------------------------------------------ Inference gateway (M5)
+  gateway:
+    <<: *hardening
+    image: modelops/gateway:dev
+    build:
+      context: ../..
+      dockerfile: apps/gateway/Dockerfile
+    read_only: true
+    cap_drop: [ALL]
+    environment:
+      REDIS_URL: redis://:${MO_REDIS_PASSWORD}@redis:6379/0
+      MO_API_KEY_PEPPER: ${MO_API_KEY_PEPPER:?run pnpm env:init}
+      MO_GATEWAY_INTERNAL_TOKEN: ${MO_GATEWAY_INTERNAL_TOKEN:?run pnpm env:init}
+    ports:
+      - '127.0.0.1:${MO_PORT_GATEWAY:-18088}:8080' # public inference API
+      - '127.0.0.1:${MO_PORT_GATEWAY_ADMIN:-18089}:8081' # internal: worker probes, /metrics
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:8081/healthz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    deploy:
+      resources:
+        limits: { cpus: '1.0', memory: 256M }
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks: [backend, inference]
+
+  # Build-only: the image the worker starts once per revision (`pnpm dev:up` builds it).
+  model-server:
+    image: modelops/model-server:dev
+    build:
+      context: ../../services/model-server
+      target: runtime
+    profiles: [images]
+
 networks:
   backend:
     name: modelops-backend
+  inference:
+    name: modelops-inference
+    internal: true
 
 volumes:
   pgdata:

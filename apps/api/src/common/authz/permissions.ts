@@ -28,6 +28,13 @@ export const PERMISSIONS = {
   'model:read': ALL,
   'model:create': WRITERS,
   'model:register': WRITERS,
+  // M5: endpoints, deployments (revisions) and inference API keys
+  'endpoint:read': ALL,
+  'endpoint:create': WRITERS,
+  'deployment:create': WRITERS,
+  'deployment:cancel': WRITERS,
+  'apikey:read': ADMINS,
+  'apikey:manage': ADMINS,
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Permission = keyof typeof PERMISSIONS;

@@ -2,7 +2,7 @@
 // Cross-platform wrapper around `docker compose` with the project's fixed arguments,
 // so the same command works in PowerShell, Git Bash, Linux and CI.
 //
-//   node scripts/compose.mjs up      build + start + wait until every healthcheck passes
+//   node scripts/compose.mjs up      build (incl. the model-server image) + start + wait until healthy
 //   node scripts/compose.mjs down    stop containers (data volumes are kept)
 //   node scripts/compose.mjs <any docker compose args...>
 import { spawnSync } from 'node:child_process';
@@ -35,6 +35,16 @@ const presets = {
   logs: ['logs', '--tail', '100'],
 };
 const args = [...base, ...(presets[command] ?? [command]), ...rest];
+
+// The model-server image is never run by Compose (the worker starts one per revision), so it
+// sits in the `images` profile; build it explicitly on `up`.
+if (command === 'up') {
+  const build = spawnSync('docker', [...base, '--profile', 'images', 'build', 'model-server'], {
+    stdio: 'inherit',
+    cwd: root,
+  });
+  if (build.status !== 0) process.exit(build.status ?? 1);
+}
 
 const result = spawnSync('docker', args, { stdio: 'inherit', cwd: root });
 process.exit(result.status ?? 1);

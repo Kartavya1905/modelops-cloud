@@ -34,6 +34,24 @@ const ConfigSchema = z.object({
   MO_VALIDATION_SWEEP_MS: z.coerce.number().int().min(200).max(600_000).default(15_000),
   MO_VALIDATION_LEASE_MS: z.coerce.number().int().min(1000).max(3_600_000).default(600_000),
   MO_VALIDATION_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(20).default(5),
+  // M5: deployments (worker -> Docker socket proxy -> model servers) and the inference gateway
+  MO_DOCKER_PROXY_URL: z.url({ protocol: /^https?$/ }).default('http://127.0.0.1:12375'),
+  MO_MODEL_SERVER_IMAGE: z.string().min(1).default('modelops/model-server:dev'),
+  MO_INFERENCE_NETWORK: z.string().min(1).default('modelops-inference'),
+  /** How containers on the inference network reach object storage (presigned URL host). */
+  MO_S3_INTERNAL_ENDPOINT: z.url({ protocol: /^https?$/ }).default('http://seaweedfs:8333'),
+  MO_GATEWAY_URL: z.url({ protocol: /^https?$/ }).default('http://127.0.0.1:18088'),
+  MO_GATEWAY_ADMIN_URL: z.url({ protocol: /^https?$/ }).default('http://127.0.0.1:18089'),
+  MO_GATEWAY_INTERNAL_TOKEN: z.string().min(32, 'must be at least 32 characters'),
+  MO_API_KEY_PEPPER: z.string().min(32, 'must be at least 32 characters'),
+  MO_DEPLOY_RELAY_MS: z.coerce.number().int().min(50).max(60_000).default(500),
+  MO_RECONCILE_MS: z.coerce.number().int().min(200).max(600_000).default(15_000),
+  MO_DRAIN_GRACE_MS: z.coerce.number().int().min(0).max(86_400_000).default(1_800_000),
+  /** Labels every container this deployment creates; a reconciler only manages its own. */
+  MO_INSTANCE_ID: z
+    .string()
+    .regex(/^[a-z0-9-]{1,40}$/, 'lowercase letters, digits and dashes')
+    .default('dev'),
 });
 
 export interface AppConfig {
@@ -58,6 +76,21 @@ export interface AppConfig {
   };
   mlWorker: { url: string; token: string };
   validation: { sweepMs: number; leaseMs: number; maxAttempts: number };
+  /** HMAC pepper for inference API keys (shared with the gateway, ADR-0006). */
+  apiKeyPepper: string;
+  deploy: {
+    dockerProxyUrl: string;
+    modelServerImage: string;
+    inferenceNetwork: string;
+    s3InternalEndpoint: string;
+    gatewayUrl: string;
+    gatewayAdminUrl: string;
+    gatewayToken: string;
+    relayMs: number;
+    reconcileMs: number;
+    drainGraceMs: number;
+    instanceId: string;
+  };
 }
 
 export const APP_CONFIG = Symbol('APP_CONFIG');
@@ -100,6 +133,20 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       sweepMs: c.MO_VALIDATION_SWEEP_MS,
       leaseMs: c.MO_VALIDATION_LEASE_MS,
       maxAttempts: c.MO_VALIDATION_MAX_ATTEMPTS,
+    },
+    apiKeyPepper: c.MO_API_KEY_PEPPER,
+    deploy: {
+      dockerProxyUrl: c.MO_DOCKER_PROXY_URL.replace(/\/+$/, ''),
+      modelServerImage: c.MO_MODEL_SERVER_IMAGE,
+      inferenceNetwork: c.MO_INFERENCE_NETWORK,
+      s3InternalEndpoint: c.MO_S3_INTERNAL_ENDPOINT.replace(/\/+$/, ''),
+      gatewayUrl: c.MO_GATEWAY_URL.replace(/\/+$/, ''),
+      gatewayAdminUrl: c.MO_GATEWAY_ADMIN_URL.replace(/\/+$/, ''),
+      gatewayToken: c.MO_GATEWAY_INTERNAL_TOKEN,
+      relayMs: c.MO_DEPLOY_RELAY_MS,
+      reconcileMs: c.MO_RECONCILE_MS,
+      drainGraceMs: c.MO_DRAIN_GRACE_MS,
+      instanceId: c.MO_INSTANCE_ID,
     },
   };
 }

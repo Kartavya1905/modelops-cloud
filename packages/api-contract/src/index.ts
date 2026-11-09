@@ -30,3 +30,12 @@ export type Signature = Schemas['SignatureDto'];
 export type ValidationCheck = Schemas['ValidationCheckDto'];
 export type ValidationReport = Schemas['ValidationReportDto'];
 export type ValidationHistory = Schemas['ValidationHistoryDto'];
+// M5: deployments + inference access
+export type Endpoint = Schemas['EndpointDto'];
+export type EndpointDetail = Schemas['EndpointDetailDto'];
+export type Revision = Schemas['RevisionDto'];
+export type RevisionSummary = Schemas['RevisionSummaryDto'];
+export type RevisionState = RevisionSummary['state'];
+export type DeploymentEvent = Schemas['DeploymentEventDto'];
+export type ApiKey = Schemas['ApiKeyDto'];
+export type CreatedApiKey = Schemas['CreatedApiKeyDto'];

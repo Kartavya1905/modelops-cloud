@@ -31,7 +31,15 @@ process.loadEnvFile(envFile);
 const env = process.env;
 const infraOnly = process.argv.includes('--infra-only');
 
-const EXPECTED_SERVICES = ['postgres', 'redis', 'seaweedfs', 'mlflow', 'ml-worker'];
+const EXPECTED_SERVICES = [
+  'postgres',
+  'redis',
+  'seaweedfs',
+  'mlflow',
+  'ml-worker',
+  'docker-proxy',
+  'gateway',
+];
 const EXPECTED_BUCKETS = [
   'mlflow-artifacts',
   'model-artifacts',
@@ -42,6 +50,9 @@ const EXPECTED_BUCKETS = [
 ];
 const mlflowUrl = env.MO_MLFLOW_URL;
 const mlWorkerUrl = env.MO_ML_WORKER_URL;
+const dockerProxyUrl = env.MO_DOCKER_PROXY_URL;
+const gatewayUrl = env.MO_GATEWAY_URL;
+const gatewayAdminUrl = env.MO_GATEWAY_ADMIN_URL;
 const apiUrl = env.MO_API_URL;
 const webUrl = `http://127.0.0.1:${env.MO_PORT_WEB ?? '3300'}`;
 
@@ -302,6 +313,48 @@ await check('ml-worker: /v1/validate refuses requests without the shared token',
   });
   assert(r.status === 401, `expected 401, got ${r.status}`);
   return 'HTTP 401';
+});
+
+// ------------------------------------------------- Docker socket proxy (M5)
+await check('docker-proxy: containers API allowed, everything dangerous denied', async () => {
+  const list = await http(`${dockerProxyUrl}/containers/json`);
+  assert(list.status === 200, `list containers: HTTP ${list.status}`);
+  const denied = [
+    ['POST', '/exec/x/start'], // running a command inside any container
+    ['GET', '/volumes'],
+    ['GET', '/networks'],
+    ['POST', '/build'],
+    ['GET', '/swarm'],
+    ['GET', '/secrets'],
+  ];
+  for (const [method, path] of denied) {
+    const r = await http(`${dockerProxyUrl}${path}`, { method });
+    assert(r.status === 403, `${method} ${path}: expected 403, got ${r.status}`);
+  }
+  return `list 200; ${denied.length} sensitive endpoints 403`;
+});
+
+// ------------------------------------------------------- Inference gateway (M5)
+await check('gateway: up, and predict without an API key is 401 problem+json', async () => {
+  const health = await http(`${gatewayUrl}/healthz`);
+  assert(health.status === 200, `healthz: HTTP ${health.status}`);
+  const r = await http(`${gatewayUrl}/v1/endpoints/smoke/predict`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{"inputs":[]}',
+  });
+  assert(r.status === 401 && r.text.includes('INVALID_API_KEY'), `predict: HTTP ${r.status}`);
+  return 'HTTP 200 / 401';
+});
+
+await check('gateway: internal admin API refuses requests without the token', async () => {
+  const r = await http(
+    `${gatewayAdminUrl}/internal/revisions/00000000-0000-0000-0000-000000000000/readyz`,
+  );
+  assert(r.status === 401, `expected 401, got ${r.status}`);
+  const metrics = await http(`${gatewayAdminUrl}/metrics`);
+  assert(metrics.text.includes('gateway_'), 'no gateway metrics exposed');
+  return 'HTTP 401; /metrics served';
 });
 
 // --------------------------------------------------------------------- MLflow

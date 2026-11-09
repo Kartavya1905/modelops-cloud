@@ -1,0 +1,12 @@
+# Build context is the repo root; send only what the gateway image needs.
+**
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!tsconfig.base.json
+!apps/gateway/package.json
+!apps/gateway/tsconfig.json
+!apps/gateway/tsconfig.build.json
+!apps/gateway/src/**
+apps/gateway/node_modules
+apps/gateway/dist

@@ -1482,6 +1482,427 @@
           "registry"
         ]
       }
+    },
+    "/api/v1/orgs/{orgId}/projects/{projectId}/endpoints": {
+      "get": {
+        "operationId": "Endpoints_list",
+        "parameters": [
+          {
+            "name": "orgId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "projectId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/EndpointDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "deployments"
+        ]
+      },
+      "post": {
+        "operationId": "Endpoints_create",
+        "parameters": [
+          {
+            "name": "orgId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "projectId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateEndpointDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EndpointDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "deployments"
+        ]
+      }
+    },
+    "/api/v1/orgs/{orgId}/endpoints/{endpointId}": {
+      "get": {
+        "operationId": "Endpoints_get",
+        "parameters": [
+          {
+            "name": "orgId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "endpointId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EndpointDetailDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "deployments"
+        ]
+      }
+    },
+    "/api/v1/orgs/{orgId}/endpoints/{endpointId}/revisions": {
+      "post": {
+        "operationId": "Endpoints_deploy",
+        "parameters": [
+          {
+            "name": "orgId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "endpointId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Unique per deploy attempt (e.g. a UUID); a retry with the same key replays the answer",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeployDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Durably accepted (REQUESTED); poll the revision for progress",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevisionDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "deployments"
+        ]
+      }
+    },
+    "/api/v1/orgs/{orgId}/revisions/{revisionId}": {
+      "get": {
+        "operationId": "Endpoints_revision",
+        "parameters": [
+          {
+            "name": "orgId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "revisionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "State, deadline and the full timeline",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevisionDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "deployments"
+        ]
+      }
+    },
+    "/api/v1/orgs/{orgId}/revisions/{revisionId}/cancel": {
+      "post": {
+        "operationId": "Endpoints_cancel",
+        "parameters": [
+          {
+            "name": "orgId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "revisionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevisionDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "deployments"
+        ]
+      }
+    },
+    "/api/v1/orgs/{orgId}/projects/{projectId}/api-keys": {
+      "get": {
+        "operationId": "ApiKeys_list",
+        "parameters": [
+          {
+            "name": "orgId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "projectId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Prefixes only; secrets are never returned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ApiKeyDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "api-keys"
+        ]
+      },
+      "post": {
+        "operationId": "ApiKeys_create",
+        "parameters": [
+          {
+            "name": "orgId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "projectId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateApiKeyDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatedApiKeyDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "api-keys"
+        ]
+      }
+    },
+    "/api/v1/orgs/{orgId}/api-keys/{keyId}": {
+      "delete": {
+        "operationId": "ApiKeys_revoke",
+        "parameters": [
+          {
+            "name": "orgId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "keyId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Revoked; the gateway stops accepting it within seconds"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "api-keys"
+        ]
+      }
     }
   },
   "info": {
@@ -1688,7 +2109,13 @@
                 "experiment:read",
                 "model:read",
                 "model:create",
-                "model:register"
+                "model:register",
+                "endpoint:read",
+                "endpoint:create",
+                "deployment:create",
+                "deployment:cancel",
+                "apikey:read",
+                "apikey:manage"
               ]
             }
           }
@@ -3059,6 +3486,611 @@
           "validatedAt",
           "latestValidation",
           "mlflowSyncError"
+        ]
+      },
+      "RevisionModelDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "modelId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "modelName": {
+            "type": "string"
+          },
+          "version": {
+            "type": "number"
+          },
+          "framework": {
+            "type": "string",
+            "enum": [
+              "SKLEARN_ONNX",
+              "PYTORCH_ONNX"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "modelId",
+          "modelName",
+          "version",
+          "framework"
+        ]
+      },
+      "RevisionSummaryDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "endpointId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revisionNumber": {
+            "type": "number"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "REQUESTED",
+              "AWAITING_APPROVAL",
+              "QUEUED",
+              "PROVISIONING",
+              "LOADING",
+              "VERIFYING",
+              "READY",
+              "DEGRADED",
+              "DRAINING",
+              "RETIRED",
+              "FAILED",
+              "CANCELLED"
+            ]
+          },
+          "modelVersion": {
+            "$ref": "#/components/schemas/RevisionModelDto"
+          },
+          "failureCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "failureDetail": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "readyAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "endpointId",
+          "revisionNumber",
+          "state",
+          "modelVersion",
+          "failureCode",
+          "failureDetail",
+          "createdAt",
+          "updatedAt",
+          "readyAt"
+        ]
+      },
+      "EndpointDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "environment": {
+            "type": "string",
+            "enum": [
+              "STAGING",
+              "PRODUCTION"
+            ]
+          },
+          "rateLimitRps": {
+            "type": "number"
+          },
+          "invokeUrl": {
+            "type": "string",
+            "description": "POST here with an API key of this project"
+          },
+          "stableRevision": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RevisionSummaryDto"
+              }
+            ]
+          },
+          "inProgressRevision": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RevisionSummaryDto"
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "projectId",
+          "slug",
+          "name",
+          "description",
+          "environment",
+          "rateLimitRps",
+          "invokeUrl",
+          "stableRevision",
+          "inProgressRevision",
+          "createdAt"
+        ]
+      },
+      "CreateEndpointDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "Churn staging",
+            "minLength": 2,
+            "maxLength": 60
+          },
+          "slug": {
+            "type": "string",
+            "example": "churn-staging",
+            "description": "URL name (`/v1/endpoints/<slug>/predict`); derived from the name if omitted"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "environment": {
+            "type": "string",
+            "enum": [
+              "STAGING",
+              "PRODUCTION"
+            ],
+            "description": "Default STAGING. PRODUCTION needs four-eyes approvals, which arrive in M8"
+          },
+          "rateLimitRps": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 1000,
+            "description": "Default 50"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "EndpointDetailDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "environment": {
+            "type": "string",
+            "enum": [
+              "STAGING",
+              "PRODUCTION"
+            ]
+          },
+          "rateLimitRps": {
+            "type": "number"
+          },
+          "invokeUrl": {
+            "type": "string",
+            "description": "POST here with an API key of this project"
+          },
+          "stableRevision": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RevisionSummaryDto"
+              }
+            ]
+          },
+          "inProgressRevision": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RevisionSummaryDto"
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "project": {
+            "$ref": "#/components/schemas/ProjectRefDto"
+          },
+          "revisions": {
+            "description": "Newest first (up to 50)",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RevisionSummaryDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "projectId",
+          "slug",
+          "name",
+          "description",
+          "environment",
+          "rateLimitRps",
+          "invokeUrl",
+          "stableRevision",
+          "inProgressRevision",
+          "createdAt",
+          "project",
+          "revisions"
+        ]
+      },
+      "ResourcesDto": {
+        "type": "object",
+        "properties": {
+          "cpus": {
+            "type": "number",
+            "minimum": 0.25,
+            "maximum": 2,
+            "description": "Default 0.5"
+          },
+          "memoryMb": {
+            "type": "number",
+            "minimum": 256,
+            "maximum": 2048,
+            "description": "Default 512"
+          }
+        }
+      },
+      "DeployDto": {
+        "type": "object",
+        "properties": {
+          "modelVersionId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "A VALIDATED version of a model in the same project"
+          },
+          "resources": {
+            "$ref": "#/components/schemas/ResourcesDto"
+          }
+        },
+        "required": [
+          "modelVersionId"
+        ]
+      },
+      "UserRefDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "DeploymentEventDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "fromState": {
+            "type": "string",
+            "enum": [
+              "REQUESTED",
+              "AWAITING_APPROVAL",
+              "QUEUED",
+              "PROVISIONING",
+              "LOADING",
+              "VERIFYING",
+              "READY",
+              "DEGRADED",
+              "DRAINING",
+              "RETIRED",
+              "FAILED",
+              "CANCELLED"
+            ],
+            "nullable": true
+          },
+          "toState": {
+            "type": "string",
+            "enum": [
+              "REQUESTED",
+              "AWAITING_APPROVAL",
+              "QUEUED",
+              "PROVISIONING",
+              "LOADING",
+              "VERIFYING",
+              "READY",
+              "DEGRADED",
+              "DRAINING",
+              "RETIRED",
+              "FAILED",
+              "CANCELLED"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "fromState",
+          "toState",
+          "message",
+          "createdAt"
+        ]
+      },
+      "RevisionDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "endpointId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revisionNumber": {
+            "type": "number"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "REQUESTED",
+              "AWAITING_APPROVAL",
+              "QUEUED",
+              "PROVISIONING",
+              "LOADING",
+              "VERIFYING",
+              "READY",
+              "DEGRADED",
+              "DRAINING",
+              "RETIRED",
+              "FAILED",
+              "CANCELLED"
+            ]
+          },
+          "modelVersion": {
+            "$ref": "#/components/schemas/RevisionModelDto"
+          },
+          "failureCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "failureDetail": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "readyAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "stateDeadlineAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "resources": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number"
+            }
+          },
+          "runtimeRef": {
+            "type": "string",
+            "nullable": true,
+            "description": "Container name"
+          },
+          "requestedBy": {
+            "$ref": "#/components/schemas/UserRefDto"
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DeploymentEventDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "endpointId",
+          "revisionNumber",
+          "state",
+          "modelVersion",
+          "failureCode",
+          "failureDetail",
+          "createdAt",
+          "updatedAt",
+          "readyAt",
+          "stateDeadlineAt",
+          "resources",
+          "runtimeRef",
+          "requestedBy",
+          "events"
+        ]
+      },
+      "ApiKeyDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "prefix": {
+            "type": "string",
+            "description": "Public part, shown as `mo_<prefix>_…`"
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "revokedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "createdByName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "prefix",
+          "scopes",
+          "createdAt",
+          "revokedAt",
+          "createdByName"
+        ]
+      },
+      "CreateApiKeyDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "checkout service",
+            "minLength": 2,
+            "maxLength": 60
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "CreatedApiKeyDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "prefix": {
+            "type": "string",
+            "description": "Public part, shown as `mo_<prefix>_…`"
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "revokedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "createdByName": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string",
+            "description": "The full key. Shown ONCE; only its HMAC is stored."
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "prefix",
+          "scopes",
+          "createdAt",
+          "revokedAt",
+          "createdByName",
+          "key"
         ]
       }
     }

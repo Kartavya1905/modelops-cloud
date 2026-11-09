@@ -1,0 +1,25 @@
+{
+  "name": "@modelops/gateway",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ModelOps Cloud inference gateway (data plane): API keys, rate limits, schema checks, routing",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node --enable-source-maps dist/main.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "fastify": "5.12.7",
+    "ioredis": "6.0.0",
+    "prom-client": "15.1.3"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "typescript": "6.0.3",
+    "vitest": "5.1.0"
+  }
+}

@@ -51,6 +51,17 @@ export function uniqueGolden(golden: Buffer): Buffer {
   return Buffer.concat([golden, Buffer.from(`${pad}\n`)]);
 }
 
+/**
+ * The same ONNX model with a unique SHA-256: appends a `doc_string` field (ModelProto field 6,
+ * length-delimited). Protobuf keeps the last value of a repeated singular field, and neither ONNX
+ * nor ONNX Runtime use doc_string, so the model behaves identically. Lets a test tamper with
+ * "its own" content-addressed blob without touching blobs other tests (or runs) share.
+ */
+export function uniqueModel(model: Buffer): Buffer {
+  const doc = Buffer.from(`test-${randomBytes(12).toString('hex')}`, 'utf8'); // < 128 bytes
+  return Buffer.concat([model, Buffer.from([0x32, doc.length]), doc]);
+}
+
 /** Golden examples whose expected labels are all flipped: the model can no longer reproduce them. */
 export function flippedGolden(golden: Buffer): Buffer {
   const g = JSON.parse(golden.toString('utf8')) as { outputs: { label: number[] } };

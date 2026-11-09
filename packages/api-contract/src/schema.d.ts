@@ -164,6 +164,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/orgs/{orgId}/api-keys/{keyId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["ApiKeys_revoke"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/orgs/{orgId}/audit-events": {
         parameters: {
             query?: never;
@@ -174,6 +190,38 @@ export interface paths {
         get: operations["Audit_list"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orgs/{orgId}/endpoints/{endpointId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["Endpoints_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orgs/{orgId}/endpoints/{endpointId}/revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["Endpoints_deploy"];
         delete?: never;
         options?: never;
         head?: never;
@@ -356,6 +404,22 @@ export interface paths {
         patch: operations["Projects_update"];
         trace?: never;
     };
+    "/api/v1/orgs/{orgId}/projects/{projectId}/api-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["ApiKeys_list"];
+        put?: never;
+        post: operations["ApiKeys_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/orgs/{orgId}/projects/{projectId}/datasets": {
         parameters: {
             query?: never;
@@ -366,6 +430,22 @@ export interface paths {
         get: operations["Registry_datasets"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orgs/{orgId}/projects/{projectId}/endpoints": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["Endpoints_list"];
+        put?: never;
+        post: operations["Endpoints_create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -452,6 +532,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/orgs/{orgId}/revisions/{revisionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["Endpoints_revision"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orgs/{orgId}/revisions/{revisionId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["Endpoints_cancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -459,6 +571,19 @@ export interface components {
         AcceptedInvitationDto: {
             /** Format: uuid */
             orgId: string;
+        };
+        ApiKeyDto: {
+            /** Format: date-time */
+            createdAt: string;
+            createdByName: string;
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** @description Public part, shown as `mo_<prefix>_…` */
+            prefix: string;
+            /** Format: date-time */
+            revokedAt: string | null;
+            scopes: string[];
         };
         AuditActorDto: {
             email: string;
@@ -491,6 +616,25 @@ export interface components {
             /** @enum {string} */
             role: "OWNER" | "ADMIN" | "ML_ENGINEER" | "VIEWER";
         };
+        CreateApiKeyDto: {
+            /** @example checkout service */
+            name: string;
+        };
+        CreatedApiKeyDto: {
+            /** Format: date-time */
+            createdAt: string;
+            createdByName: string;
+            /** Format: uuid */
+            id: string;
+            /** @description The full key. Shown ONCE; only its HMAC is stored. */
+            key: string;
+            name: string;
+            /** @description Public part, shown as `mo_<prefix>_…` */
+            prefix: string;
+            /** Format: date-time */
+            revokedAt: string | null;
+            scopes: string[];
+        };
         CreatedInvitationDto: {
             /**
              * @description Path on the web app to accept the invite.
@@ -508,6 +652,23 @@ export interface components {
             role: "OWNER" | "ADMIN" | "ML_ENGINEER" | "VIEWER";
             /** @description One-time token. Shown only in this response; only its hash is stored. */
             token: string;
+        };
+        CreateEndpointDto: {
+            description?: string;
+            /**
+             * @description Default STAGING. PRODUCTION needs four-eyes approvals, which arrive in M8
+             * @enum {string}
+             */
+            environment?: "STAGING" | "PRODUCTION";
+            /** @example Churn staging */
+            name: string;
+            /** @description Default 50 */
+            rateLimitRps?: number;
+            /**
+             * @description URL name (`/v1/endpoints/<slug>/predict`); derived from the name if omitted
+             * @example churn-staging
+             */
+            slug?: string;
         };
         CreateInvitationDto: {
             /** @example grace@example.com */
@@ -547,6 +708,63 @@ export interface components {
             sha256: string;
             uri: string;
             version: string;
+        };
+        DeployDto: {
+            /**
+             * Format: uuid
+             * @description A VALIDATED version of a model in the same project
+             */
+            modelVersionId: string;
+            resources?: components["schemas"]["ResourcesDto"];
+        };
+        DeploymentEventDto: {
+            /** Format: date-time */
+            createdAt: string;
+            /** @enum {string|null} */
+            fromState: "REQUESTED" | "AWAITING_APPROVAL" | "QUEUED" | "PROVISIONING" | "LOADING" | "VERIFYING" | "READY" | "DEGRADED" | "DRAINING" | "RETIRED" | "FAILED" | "CANCELLED" | null;
+            id: string;
+            message: string;
+            /** @enum {string} */
+            toState: "REQUESTED" | "AWAITING_APPROVAL" | "QUEUED" | "PROVISIONING" | "LOADING" | "VERIFYING" | "READY" | "DEGRADED" | "DRAINING" | "RETIRED" | "FAILED" | "CANCELLED";
+        };
+        EndpointDetailDto: {
+            /** Format: date-time */
+            createdAt: string;
+            description: string | null;
+            /** @enum {string} */
+            environment: "STAGING" | "PRODUCTION";
+            /** Format: uuid */
+            id: string;
+            inProgressRevision: components["schemas"]["RevisionSummaryDto"] | null;
+            /** @description POST here with an API key of this project */
+            invokeUrl: string;
+            name: string;
+            project: components["schemas"]["ProjectRefDto"];
+            /** Format: uuid */
+            projectId: string;
+            rateLimitRps: number;
+            /** @description Newest first (up to 50) */
+            revisions: components["schemas"]["RevisionSummaryDto"][];
+            slug: string;
+            stableRevision: components["schemas"]["RevisionSummaryDto"] | null;
+        };
+        EndpointDto: {
+            /** Format: date-time */
+            createdAt: string;
+            description: string | null;
+            /** @enum {string} */
+            environment: "STAGING" | "PRODUCTION";
+            /** Format: uuid */
+            id: string;
+            inProgressRevision: components["schemas"]["RevisionSummaryDto"] | null;
+            /** @description POST here with an API key of this project */
+            invokeUrl: string;
+            name: string;
+            /** Format: uuid */
+            projectId: string;
+            rateLimitRps: number;
+            slug: string;
+            stableRevision: components["schemas"]["RevisionSummaryDto"] | null;
         };
         ExperimentDto: {
             /** @description MLflow experiment id */
@@ -600,7 +818,7 @@ export interface components {
             orgName: string;
             orgSlug: string;
             /** @description For UI hints only. */
-            permissions: ("org:read" | "member:read" | "member:manage" | "invitation:create" | "project:read" | "project:create" | "project:update" | "project:archive" | "audit:read" | "experiment:read" | "model:read" | "model:create" | "model:register")[];
+            permissions: ("org:read" | "member:read" | "member:manage" | "invitation:create" | "project:read" | "project:create" | "project:update" | "project:archive" | "audit:read" | "experiment:read" | "model:read" | "model:create" | "model:register" | "endpoint:read" | "endpoint:create" | "deployment:create" | "deployment:cancel" | "apikey:read" | "apikey:manage")[];
             /** @enum {string} */
             role: "OWNER" | "ADMIN" | "ML_ENGINEER" | "VIEWER";
         };
@@ -764,6 +982,67 @@ export interface components {
             /** Format: uuid */
             versionId: string;
         };
+        ResourcesDto: {
+            /** @description Default 0.5 */
+            cpus?: number;
+            /** @description Default 512 */
+            memoryMb?: number;
+        };
+        RevisionDto: {
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            endpointId: string;
+            events: components["schemas"]["DeploymentEventDto"][];
+            failureCode: string | null;
+            failureDetail: string | null;
+            /** Format: uuid */
+            id: string;
+            modelVersion: components["schemas"]["RevisionModelDto"];
+            /** Format: date-time */
+            readyAt: string | null;
+            requestedBy: components["schemas"]["UserRefDto"];
+            resources: {
+                [key: string]: number;
+            };
+            revisionNumber: number;
+            /** @description Container name */
+            runtimeRef: string | null;
+            /** @enum {string} */
+            state: "REQUESTED" | "AWAITING_APPROVAL" | "QUEUED" | "PROVISIONING" | "LOADING" | "VERIFYING" | "READY" | "DEGRADED" | "DRAINING" | "RETIRED" | "FAILED" | "CANCELLED";
+            /** Format: date-time */
+            stateDeadlineAt: string | null;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        RevisionModelDto: {
+            /** @enum {string} */
+            framework: "SKLEARN_ONNX" | "PYTORCH_ONNX";
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            modelId: string;
+            modelName: string;
+            version: number;
+        };
+        RevisionSummaryDto: {
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            endpointId: string;
+            failureCode: string | null;
+            failureDetail: string | null;
+            /** Format: uuid */
+            id: string;
+            modelVersion: components["schemas"]["RevisionModelDto"];
+            /** Format: date-time */
+            readyAt: string | null;
+            revisionNumber: number;
+            /** @enum {string} */
+            state: "REQUESTED" | "AWAITING_APPROVAL" | "QUEUED" | "PROVISIONING" | "LOADING" | "VERIFYING" | "READY" | "DEGRADED" | "DRAINING" | "RETIRED" | "FAILED" | "CANCELLED";
+            /** Format: date-time */
+            updatedAt: string;
+        };
         RunComparisonDto: {
             /** @description Params whose value differs between runs */
             differingParams: string[];
@@ -852,6 +1131,11 @@ export interface components {
         };
         UserDto: {
             email: string;
+            /** Format: uuid */
+            id: string;
+            name: string;
+        };
+        UserRefDto: {
             /** Format: uuid */
             id: string;
             name: string;
@@ -1135,6 +1419,27 @@ export interface operations {
             };
         };
     };
+    ApiKeys_revoke: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                keyId: string;
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked; the gateway stops accepting it within seconds */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     Audit_list: {
         parameters: {
             query?: {
@@ -1157,6 +1462,58 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuditPageDto"];
+                };
+            };
+        };
+    };
+    Endpoints_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                endpointId: string;
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EndpointDetailDto"];
+                };
+            };
+        };
+    };
+    Endpoints_deploy: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Unique per deploy attempt (e.g. a UUID); a retry with the same key replays the answer */
+                "Idempotency-Key": string;
+            };
+            path: {
+                endpointId: string;
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeployDto"];
+            };
+        };
+        responses: {
+            /** @description Durably accepted (REQUESTED); poll the revision for progress */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RevisionDto"];
                 };
             };
         };
@@ -1557,6 +1914,55 @@ export interface operations {
             };
         };
     };
+    ApiKeys_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Prefixes only; secrets are never returned */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiKeyDto"][];
+                };
+            };
+        };
+    };
+    ApiKeys_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateApiKeyDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreatedApiKeyDto"];
+                };
+            };
+        };
+    };
     Registry_datasets: {
         parameters: {
             query?: never;
@@ -1575,6 +1981,54 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DatasetVersionDto"][];
+                };
+            };
+        };
+    };
+    Endpoints_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EndpointDto"][];
+                };
+            };
+        };
+    };
+    Endpoints_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateEndpointDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EndpointDto"];
                 };
             };
         };
@@ -1721,6 +2175,51 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RunComparisonDto"];
+                };
+            };
+        };
+    };
+    Endpoints_revision: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                revisionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description State, deadline and the full timeline */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RevisionDto"];
+                };
+            };
+        };
+    };
+    Endpoints_cancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                revisionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RevisionDto"];
                 };
             };
         };

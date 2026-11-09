@@ -8,6 +8,7 @@ import { ConfigModule } from './config/config.module';
 import { HealthModule } from './health/health.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { DeploymentsModule } from './modules/deployments/deployments.module';
 import { ExperimentsModule } from './modules/experiments/experiments.module';
 import { MlflowModule } from './modules/mlflow/mlflow.module';
 import { OrganizationsModule } from './modules/organizations/organizations.module';
@@ -34,6 +35,7 @@ import { ValidationModule } from './modules/validation/validation.module';
     ExperimentsModule,
     ValidationModule,
     RegistryModule,
+    DeploymentsModule,
   ],
   providers: [{ provide: APP_FILTER, useClass: ProblemFilter }],
 })

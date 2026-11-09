@@ -1,8 +1,8 @@
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { Queue } from 'bullmq';
-import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
-import { APP_CONFIG, loadConfig } from '../../src/config/config';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { APP_CONFIG } from '../../src/config/config';
 import {
   bullConnection,
   VALIDATION_QUEUE,
@@ -10,7 +10,7 @@ import {
 } from '../../src/modules/validation/validation.queue';
 import { WorkerModule } from '../../src/worker.module';
 import { loadBundle, uniqueGolden } from './bundles';
-import { Client, createTestApp, prismaOf } from './helpers';
+import { Client, createTestApp, prismaOf, testConfig } from './helpers';
 
 /**
  * The real background path: the API enqueues on Redis (BullMQ), a separate WorkerModule (what
@@ -61,12 +61,8 @@ afterAll(async () => {
 
 describe('validation worker process', () => {
   it('validates queued versions, and its sweeper recovers a version whose job was lost', async () => {
-    const config = loadConfig({
-      ...process.env,
-      DATABASE_URL: inject('databaseUrl'),
-      REDIS_URL: inject('redisUrl'),
-      MO_VALIDATION_SWEEP_MS: '1000',
-    });
+    // Test instance id: the real loops here must never manage the dev stack's containers.
+    const config = testConfig({ MO_VALIDATION_SWEEP_MS: '1000' });
 
     // 1. A version whose job vanished from Redis (e.g. Redis restarted without persistence).
     const lost = await upload();

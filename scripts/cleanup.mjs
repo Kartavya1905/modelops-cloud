@@ -14,6 +14,14 @@ function run(cmd, args) {
   return { code: r.status ?? 1, out: (r.stdout ?? '').trim(), err: (r.stderr ?? '').trim() };
 }
 
+// Model servers first: they hold the `inference` network open, which `down` must remove.
+const managed = run('docker', ['ps', '-aq', '--filter', 'label=modelops.managed=true']);
+const ids = managed.out.split(/\s+/).filter(Boolean);
+if (ids.length > 0) {
+  console.log(`cleanup: removing ${ids.length} orchestrator-managed container(s)...`);
+  run('docker', ['rm', '-f', ...ids]);
+}
+
 console.log('cleanup: stopping Compose stack and deleting its volumes...');
 const down = spawnSync(
   'node',
@@ -24,12 +32,5 @@ const down = spawnSync(
   },
 );
 if (down.status !== 0) process.exit(down.status ?? 1);
-
-const managed = run('docker', ['ps', '-aq', '--filter', 'label=modelops.managed=true']);
-const ids = managed.out.split(/\s+/).filter(Boolean);
-if (ids.length > 0) {
-  console.log(`cleanup: removing ${ids.length} orchestrator-managed container(s)...`);
-  run('docker', ['rm', '-f', ...ids]);
-}
 
 console.log('cleanup: done. Run `pnpm dev:up` to start fresh.');

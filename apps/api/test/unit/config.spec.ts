@@ -8,6 +8,8 @@ const valid = {
   MO_S3_ACCESS_KEY: 'a'.repeat(20),
   MO_S3_SECRET_KEY: 's'.repeat(40),
   MO_ML_WORKER_TOKEN: 't'.repeat(64),
+  MO_GATEWAY_INTERNAL_TOKEN: 'g'.repeat(64),
+  MO_API_KEY_PEPPER: 'k'.repeat(64),
 };
 
 describe('loadConfig', () => {

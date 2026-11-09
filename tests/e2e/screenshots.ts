@@ -1,4 +1,4 @@
-// Captures README/demo screenshots (M2-M4) from a running stack, in light and dark mode.
+// Captures README/demo screenshots (M2-M5) from a running stack, in light and dark mode.
 //   pnpm --filter @modelops/e2e screenshots      (writes docs/images/m*.png)
 // Uses a fresh throwaway account each run; nothing here is a real credential.
 import { execFileSync } from 'node:child_process';
@@ -155,6 +155,26 @@ async function main(): Promise<void> {
     await noToasts(page);
     await page.screenshot({ path: join(OUT, `m4-rejected${suffix}.png`), fullPage: true });
     console.log(`screenshot: docs/images/m4-rejected${suffix}.png`);
+
+    // ---- M5: endpoint, deploy the validated v1, API key ---------------------------------
+    await page.getByRole('link', { name: 'Churn classifier' }).click();
+    await page.getByRole('link', { name: 'Customer churn' }).click();
+    await page.getByRole('button', { name: 'New endpoint' }).click();
+    await page.getByRole('dialog').getByLabel('Name').fill('Churn staging');
+    await page.getByRole('dialog').getByRole('button', { name: 'Create endpoint' }).click();
+    await page.getByRole('heading', { name: 'Churn staging' }).waitFor();
+    await page.getByRole('button', { name: 'Deploy' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Deploy' }).click();
+    await page.locator('[data-step="READY"][data-state="done"]').waitFor({ timeout: 120_000 });
+    await noToasts(page);
+    await page.screenshot({ path: join(OUT, `m5-endpoint${suffix}.png`), fullPage: true });
+    console.log(`screenshot: docs/images/m5-endpoint${suffix}.png`);
+    await page.getByRole('link', { name: 'Customer churn' }).click();
+    await page.getByRole('button', { name: 'New API key' }).click();
+    await page.getByRole('dialog').getByLabel('Name').fill('checkout service');
+    await page.getByRole('dialog').getByRole('button', { name: 'Create key' }).click();
+    await page.getByText('Copy your API key now').waitFor();
+    await shot(page, `m5-api-key${suffix}`);
     await page.close();
   }
   await browser.close();

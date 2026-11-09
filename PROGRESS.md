@@ -28,8 +28,8 @@ Legend: ✅ done · 🚧 in progress · ⬜ not started
 | M1 | Repository and local environment | ✅ | [m1-local-environment.md](docs/milestones/m1-local-environment.md): smoke 17/17, unit 25/25 (2026-11-03); **CI green on Linux**: [run 41775591802](https://github.com/Kartavya1905/modelops-cloud/actions/runs/41775591802) |
 | M2 | Auth, orgs, projects, frontend foundation | ✅ | [m2-auth-orgs-projects.md](docs/milestones/m2-auth-orgs-projects.md): unit 33 + 27, integration 88/88, e2e 4/4 incl. axe, smoke 17/17 (2026-11-04); **CI green on Linux**: [run 41784543609](https://github.com/Kartavya1905/modelops-cloud/actions/runs/41784543609) |
 | M3 | MLflow, registry, experiments | ✅ | [m3-experiments-registry.md](docs/milestones/m3-experiments-registry.md): ML 32, unit 54 + 35, integration 142/142, e2e 5/5 with real training (2026-11-04); **CI green on Linux**: [run 41792113922](https://github.com/Kartavya1905/modelops-cloud/actions/runs/41792113922) |
-| M4 | Model validation and artifact storage | 🚧 | [m4-validation-artifacts.md](docs/milestones/m4-validation-artifacts.md): validator 31 (Linux image), ML 32, unit 57 + 35, integration 172/172, e2e 6/6, smoke 20/20 (2026-11-04); **CI on Linux pending** |
-| M5 | Inference deployment pipeline | ⬜ | — |
+| M4 | Model validation and artifact storage | ✅ | [m4-validation-artifacts.md](docs/milestones/m4-validation-artifacts.md): validator 31 (Linux image), ML 32, unit 57 + 35, integration 172/172, e2e 6/6, smoke 20/20 (2026-11-04); **CI green on Linux**: [run 41886510397](https://github.com/Kartavya1905/modelops-cloud/actions/runs/41886510397) |
+| M5 | Inference deployment pipeline | 🚧 | [m5-deployment-pipeline.md](docs/milestones/m5-deployment-pipeline.md): unit 214 + 12 + 35, model server 14, integration 221/221 (real Docker), e2e 7/7, smoke 23/23 (2026-11-04); **CI on Linux pending** |
 | M6 | Playground and operational dashboard | ⬜ | — |
 | M7 | Drift monitoring and evaluation | ⬜ | — |
 | M8 | Canary and rollback | ⬜ | — |
@@ -55,8 +55,11 @@ Legend: ✅ done · 🚧 in progress · ⬜ not started
 - [x] MLflow aliases (`champion`/`challenger`) → deferred to **M7** with the evaluation gate
 - [x] Bundle upload → direct multipart to the API with hard limits instead of presigned URLs (M4 deviation; revisit in M9)
 - [x] Validation queue → version status as the durable intent + sweeper, no outbox table (ADR-0004 addendum); outbox still in **M5**
-- [x] SEC-6 (deploy-unvalidated trigger) → **M5**, with revisions
+- [x] SEC-6 (deploy-unvalidated trigger) → done in M5 (trigger + API + worker checks)
+- [x] Worker reaches model servers through the gateway's internal admin API (internal network; ADR-0005 addendum)
+- [x] Gateway port **18088** (not 18080, taken by another local project)
+- [x] Production endpoints + approvals → **M8**; M5 serves STAGING endpoints with a verified blue/green switch
 
 ## Next actions
-1. Commit and push M4; tick it once CI is green on Linux
-2. Start M5: inference deployment pipeline
+1. Commit and push M5; tick it once CI is green on Linux
+2. Start M6: prediction playground and operational dashboard

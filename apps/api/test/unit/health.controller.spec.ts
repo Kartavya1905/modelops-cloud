@@ -40,6 +40,20 @@ async function bootWith(checks: DependencyCheck[]): Promise<INestApplication> {
     },
     mlWorker: { url: 'http://unused', token: 't' },
     validation: { sweepMs: 1000, leaseMs: 1000, maxAttempts: 1 },
+    apiKeyPepper: 'p'.repeat(32),
+    deploy: {
+      dockerProxyUrl: 'http://127.0.0.1:1',
+      modelServerImage: 'img',
+      inferenceNetwork: 'net',
+      s3InternalEndpoint: 'http://s3',
+      gatewayUrl: 'http://127.0.0.1:2',
+      gatewayAdminUrl: 'http://127.0.0.1:3',
+      gatewayToken: 't'.repeat(32),
+      relayMs: 500,
+      reconcileMs: 1000,
+      drainGraceMs: 0,
+      instanceId: 'unit',
+    },
   };
   const moduleRef = await Test.createTestingModule({
     controllers: [HealthController],

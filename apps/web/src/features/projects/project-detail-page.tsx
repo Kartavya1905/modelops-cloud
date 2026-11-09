@@ -22,6 +22,8 @@ import {
   Label,
   Textarea,
 } from '@/components/ui/primitives';
+import { ApiKeysSection } from '@/features/deployments/api-keys-section';
+import { EndpointsSection } from '@/features/deployments/endpoints-section';
 import { ModelsSection } from '@/features/ml/models-section';
 import { RunsSection } from '@/features/ml/runs-section';
 import { useOrgId } from '@/features/org/org-shell';
@@ -193,6 +195,10 @@ export function ProjectDetailPage() {
       />
       <RunsSection orgId={orgId} projectId={project.id} />
       <ModelsSection orgId={orgId} projectId={project.id} />
+      <EndpointsSection orgId={orgId} projectId={project.id} />
+      <PermissionGate orgId={orgId} permission="apikey:read">
+        <ApiKeysSection orgId={orgId} projectId={project.id} />
+      </PermissionGate>
       <EditProjectForm key={project.updatedAt} orgId={orgId} project={project} />
       <ConfirmDialog
         open={confirmOpen}

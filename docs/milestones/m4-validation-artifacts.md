@@ -1,6 +1,6 @@
 # Milestone 4 — Model Validation and Artifact Storage
 
-> **Status: implemented and verified locally (2026-11-04, Windows 11 + Linux containers).** CI on Linux has not run yet: this box is ticked in `PROGRESS.md` only after a green CI run.
+> **Status: done (2026-11-04).** Verified locally on Windows 11 and in CI on Linux: [run 41886510397](https://github.com/Kartavya1905/modelops-cloud/actions/runs/41886510397). All four jobs passed, including the new validator job, where the sandbox's memory and CPU limits are real.
 
 ![A validated version](../images/m4-validated.png)
 
@@ -171,7 +171,7 @@ ESLint, Prettier, ruff (check + format) ×2, tsc ×4, contract regenerated
 | One test per check | ✅ V1–V11 |
 | DB trigger test | ✅ hashes immutable, `VALIDATED` final. "Cannot deploy unvalidated" moves to M5 with revisions (see deviations) |
 | Presigned upload | ⚠️ replaced by a size-limited direct upload (see deviations) |
-| CI green on Linux | ⏳ pending the next push |
+| CI green on Linux | ✅ [run 41886510397](https://github.com/Kartavya1905/modelops-cloud/actions/runs/41886510397) |
 
 ## L. Completion checklist
 
@@ -183,4 +183,4 @@ ESLint, Prettier, ruff (check + format) ×2, tsc ×4, contract regenerated
 - [x] Web: validation checklist with live status, upload dialog, re-run
 - [x] Validator, unit, integration (incl. real worker), e2e + axe, smoke tests
 - [x] CI: ml-worker job; worker in the stack job
-- [ ] Green CI run on Linux
+- [x] Green CI run on Linux

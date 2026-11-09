@@ -2,14 +2,17 @@ import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { NestExpressApplication } from '@nestjs/platform-express';
-import { Test } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { inject } from 'vitest';
 import { AppModule } from '../../src/app.module';
 import { PrismaService } from '../../src/common/prisma/prisma.service';
-import { APP_CONFIG, loadConfig } from '../../src/config/config';
+import { APP_CONFIG, type AppConfig, loadConfig } from '../../src/config/config';
 import type { Role } from '../../src/generated/prisma/client';
+import { DeployWorker } from '../../src/modules/deployments/deploy.worker';
+import { ValidationWorker } from '../../src/modules/validation/validation.worker';
 import { setupApp } from '../../src/setup-app';
+import { WorkerModule } from '../../src/worker.module';
 
 export const API = '/api/v1';
 export const PASSWORD = 'correct horse battery staple';
@@ -18,18 +21,26 @@ export const PASSWORD = 'correct horse battery staple';
  * Boots the full AppModule (all guards, filters, pipes) against the throwaway test database.
  * `env` overrides individual settings (e.g. an unreachable ML worker for failure tests).
  */
-export async function createTestApp(
-  env: Record<string, string> = {},
-): Promise<NestExpressApplication> {
+/** Settings every test process shares: throwaway DB, test Redis, test gateway, test instance. */
+export function testConfig(env: Record<string, string> = {}): AppConfig {
   const envFile = join(process.cwd(), '..', '..', '.env');
   if (existsSync(envFile)) process.loadEnvFile(envFile);
-  const config = loadConfig({
+  return loadConfig({
     ...process.env,
     DATABASE_URL: inject('databaseUrl'),
     REDIS_URL: inject('redisUrl'),
     MO_API_DOCS: 'false',
+    MO_GATEWAY_URL: inject('gatewayUrl'),
+    MO_GATEWAY_ADMIN_URL: inject('gatewayAdminUrl'),
+    MO_INSTANCE_ID: inject('instanceId'),
     ...env,
   });
+}
+
+export async function createTestApp(
+  env: Record<string, string> = {},
+): Promise<NestExpressApplication> {
+  const config = testConfig(env);
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
     .overrideProvider(APP_CONFIG)
     .useValue(config)
@@ -123,4 +134,21 @@ export interface Problem {
   detail?: string;
   errors?: { field: string; message: string }[];
   requestId?: string;
+}
+
+/**
+ * The worker process's module (validation + deployments) with its background loops disabled:
+ * tests call the relay, processor and reconciler directly, so every step is deterministic.
+ */
+export async function createTestWorker(env: Record<string, string> = {}): Promise<TestingModule> {
+  const worker = await Test.createTestingModule({ imports: [WorkerModule] })
+    .overrideProvider(APP_CONFIG)
+    .useValue(testConfig(env))
+    .overrideProvider(DeployWorker)
+    .useValue({})
+    .overrideProvider(ValidationWorker)
+    .useValue({})
+    .compile();
+  await worker.init();
+  return worker;
 }

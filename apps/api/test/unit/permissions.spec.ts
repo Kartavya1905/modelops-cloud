@@ -12,6 +12,8 @@ import {
 import { ProjectsController } from '../../src/modules/projects/projects.controller';
 import { RegistryController } from '../../src/modules/registry/registry.controller';
 import { ValidationController } from '../../src/modules/validation/validation.controller';
+import { EndpointsController } from '../../src/modules/deployments/endpoints.controller';
+import { ApiKeysController } from '../../src/modules/api-keys/api-keys.controller';
 
 describe('permission table', () => {
   it('Owner holds every permission; Viewer holds only read permissions', () => {
@@ -50,6 +52,8 @@ describe('every org-scoped route declares a permission', () => {
     ExperimentsController,
     RegistryController,
     ValidationController,
+    EndpointsController,
+    ApiKeysController,
   ];
 
   const guarded = (target: object): boolean => {

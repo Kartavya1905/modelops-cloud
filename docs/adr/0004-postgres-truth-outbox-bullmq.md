@@ -31,3 +31,8 @@ Model validation is the first BullMQ workload. It uses **state as the outbox** i
 
 This keeps the guarantee (no lost work, at-least-once delivery, effectively-once transitions) without the dual-write problem, because the enqueue is never the source of truth. Tests cover a deleted Redis job, an expired lease and concurrent duplicate delivery. Deployments (M5) still get the outbox table: one endpoint can have several pending intents (deploy, scale, rollback) that a single status column cannot express.
 
+## Addendum 2 — M5 deployments use the outbox table (2026-11-04)
+As planned, a deploy request commits five things in one transaction: the revision (REQUESTED), its first timeline event, an `outbox_messages` row, the audit row and the `idempotency_keys` row.
+- **Relay:** claims rows with `FOR UPDATE SKIP LOCKED`, moves the revision to QUEUED and marks the row dispatched in one transaction, then enqueues `deploy-<revisionId>` after the commit.
+- **Crash between commit and enqueue:** the revision is QUEUED with no job. The reconciler re-enqueues it (tested by deleting the job). A re-dispatch is a no-op because the job id is deterministic.
+- **Proven by the integration tests:** 10 concurrent requests with one Idempotency-Key produce exactly one revision and one outbox row; two processors on the same revision produce one container.

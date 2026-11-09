@@ -87,9 +87,31 @@ jobs:
           docker build --target test -t modelops/ml-worker:test .
           docker run --rm --read-only --tmpfs /tmp modelops/ml-worker:test
 
+  model-server:
+    name: Model server (ruff · pytest · image)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: services/model-server
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2 (no floating major tag exists)
+        with:
+          enable-cache: true
+          cache-dependency-glob: services/model-server/uv.lock
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run pytest
+      - name: Test the container image (read-only root filesystem, non-root)
+        run: |
+          docker build --target test -t modelops/model-server:test .
+          docker run --rm --read-only --tmpfs /tmp modelops/model-server:test
+
   stack:
     name: integration · smoke · e2e
-    needs: [quality, ml, ml-worker]
+    needs: [quality, ml, ml-worker, model-server]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -104,13 +126,16 @@ jobs:
       - name: Generate throwaway secrets
         run: pnpm env:init
 
+      # Also builds the gateway and model-server images and starts the Docker socket proxy (M5).
       - name: Start infrastructure (waits for healthchecks)
         run: pnpm dev:up
 
       - name: Apply database migrations
         run: pnpm db:deploy
 
-      - name: Integration tests (real Postgres, Redis, MLflow, S3 and ml-worker; throwaway database)
+      # M5 tests deploy real model-server containers through the socket proxy and start their
+      # own gateway container on the test Redis database.
+      - name: Integration tests (real Postgres, Redis, MLflow, S3, ml-worker, Docker; throwaway database)
         run: pnpm test:integration
 
       - name: Build and start API + web
@@ -155,6 +180,8 @@ jobs:
         run: |
           pnpm dev:ps || true
           pnpm dev:logs || true
+          docker ps -a --filter label=modelops.managed=true || true
+          for c in $(docker ps -aq --filter label=modelops.managed=true); do docker logs --tail 50 "$c" || true; done
           cat api.log worker.log web.log || true
 
       - name: Tear down

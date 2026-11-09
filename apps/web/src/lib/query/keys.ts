@@ -26,4 +26,13 @@ export const qk = {
   model: (orgId: string, modelId: string) => ['orgs', orgId, 'models', modelId] as const,
   modelVersion: (orgId: string, versionId: string) =>
     ['orgs', orgId, 'model-versions', versionId] as const,
+  // M5
+  endpoints: (orgId: string, projectId: string) =>
+    ['orgs', orgId, 'projects', projectId, 'endpoints'] as const,
+  endpoint: (orgId: string, endpointId: string) =>
+    ['orgs', orgId, 'endpoints', endpointId] as const,
+  revision: (orgId: string, revisionId: string) =>
+    ['orgs', orgId, 'revisions', revisionId] as const,
+  apiKeys: (orgId: string, projectId: string) =>
+    ['orgs', orgId, 'projects', projectId, 'api-keys'] as const,
 };

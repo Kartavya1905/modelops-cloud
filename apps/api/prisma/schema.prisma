@@ -66,11 +66,14 @@ model User {
 
   sessions            Session[]
   memberships         Membership[]
-  invitationsCreated  Invitation[] @relation("InvitationCreatedBy")
-  invitationsAccepted Invitation[] @relation("InvitationAcceptedBy")
+  invitationsCreated  Invitation[]         @relation("InvitationCreatedBy")
+  invitationsAccepted Invitation[]         @relation("InvitationAcceptedBy")
   projectsCreated     Project[]
   modelsCreated       RegisteredModel[]
   versionsCreated     ModelVersion[]
+  endpointsCreated    Endpoint[]
+  revisionsRequested  DeploymentRevision[]
+  apiKeysCreated      ApiKey[]
 
   @@map("users")
 }
@@ -110,6 +113,9 @@ model Organization {
   modelVersions    ModelVersion[]
   datasetVersions  DatasetVersion[]
   validations      ValidationReport[]
+  endpoints        Endpoint[]
+  revisions        DeploymentRevision[]
+  apiKeys          ApiKey[]
 
   @@map("organizations")
 }
@@ -151,22 +157,24 @@ model Invitation {
 }
 
 model Project {
-  id          String    @id @default(uuid()) @db.Uuid
-  orgId       String    @map("org_id") @db.Uuid
-  slug        String
-  name        String
-  description String?
-  createdById String    @map("created_by_id") @db.Uuid
-  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
-  archivedAt  DateTime? @map("archived_at") @db.Timestamptz(3)
+  id                 String    @id @default(uuid()) @db.Uuid
+  orgId              String    @map("org_id") @db.Uuid
+  slug               String
+  name               String
+  description        String?
+  createdById        String    @map("created_by_id") @db.Uuid
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  archivedAt         DateTime? @map("archived_at") @db.Timestamptz(3)
   /// MLflow experiment `modelops/<org-slug>/<project-slug>`, created on first use.
-  mlflowExperimentId String? @unique @map("mlflow_experiment_id")
+  mlflowExperimentId String?   @unique @map("mlflow_experiment_id")
 
   org              Organization      @relation(fields: [orgId], references: [id], onDelete: Cascade)
   createdBy        User              @relation(fields: [createdById], references: [id])
   registeredModels RegisteredModel[]
   datasetVersions  DatasetVersion[]
+  endpoints        Endpoint[]
+  apiKeys          ApiKey[]
 
   @@unique([orgId, slug])
   @@index([orgId, createdAt(sort: Desc)])
@@ -254,13 +262,14 @@ model ModelVersion {
   createdById              String             @map("created_by_id") @db.Uuid
   createdAt                DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  org             Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  model           RegisteredModel @relation(fields: [modelId], references: [id], onDelete: Cascade)
-  trainingDataset DatasetVersion? @relation(fields: [trainingDatasetVersionId], references: [id])
-  parent          ModelVersion?   @relation("Lineage", fields: [parentVersionId], references: [id])
-  children        ModelVersion[]  @relation("Lineage")
-  createdBy       User            @relation(fields: [createdById], references: [id])
+  org             Organization         @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  model           RegisteredModel      @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  trainingDataset DatasetVersion?      @relation(fields: [trainingDatasetVersionId], references: [id])
+  parent          ModelVersion?        @relation("Lineage", fields: [parentVersionId], references: [id])
+  children        ModelVersion[]       @relation("Lineage")
+  createdBy       User                 @relation(fields: [createdById], references: [id])
   validations     ValidationReport[]
+  revisions       DeploymentRevision[]
 
   @@unique([modelId, version])
   @@unique([modelId, mlflowRunId])
@@ -312,4 +321,173 @@ model AuditEvent {
   @@index([orgId, id(sort: Desc)])
   @@index([actorId, id(sort: Desc)])
   @@map("audit_events")
+}
+
+// ============================================================ M5: deployments + inference access
+
+enum EndpointEnvironment {
+  STAGING
+  PRODUCTION
+}
+
+/// docs/05 §2. FAILED, CANCELLED and RETIRED are terminal (enforced by a trigger).
+enum RevisionState {
+  REQUESTED
+  AWAITING_APPROVAL
+  QUEUED
+  PROVISIONING
+  LOADING
+  VERIFYING
+  READY
+  DEGRADED
+  DRAINING
+  RETIRED
+  FAILED
+  CANCELLED
+}
+
+/// A stable inference URL (`/v1/endpoints/<slug>/predict`) whose revisions change over time.
+model Endpoint {
+  id               String              @id @default(uuid()) @db.Uuid
+  orgId            String              @map("org_id") @db.Uuid
+  projectId        String              @map("project_id") @db.Uuid
+  slug             String
+  name             String
+  description      String?
+  environment      EndpointEnvironment @default(STAGING)
+  /// The revision receiving traffic. Must belong to this endpoint (trigger).
+  stableRevisionId String?             @unique @map("stable_revision_id") @db.Uuid
+  rateLimitRps     Int                 @default(50) @map("rate_limit_rps")
+  /// Optimistic-lock counter (ETag) for traffic settings (used from M8).
+  rowVersion       Int                 @default(0) @map("row_version")
+  createdById      String              @map("created_by_id") @db.Uuid
+  createdAt        DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  org            Organization         @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  project        Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy      User                 @relation(fields: [createdById], references: [id])
+  stableRevision DeploymentRevision?  @relation("StableRevision", fields: [stableRevisionId], references: [id])
+  revisions      DeploymentRevision[] @relation("EndpointRevisions")
+
+  @@unique([projectId, slug])
+  @@index([orgId, createdAt(sort: Desc)])
+  @@map("endpoints")
+}
+
+/// One attempt to run one validated model version behind an endpoint (docs/05).
+model DeploymentRevision {
+  id                 String        @id @default(uuid()) @db.Uuid
+  orgId              String        @map("org_id") @db.Uuid
+  endpointId         String        @map("endpoint_id") @db.Uuid
+  modelVersionId     String        @map("model_version_id") @db.Uuid
+  revisionNumber     Int           @map("revision_number")
+  state              RevisionState @default(REQUESTED)
+  /// Compare-and-set counter: every transition is `WHERE state = $from AND state_version = $v`.
+  stateVersion       Int           @default(0) @map("state_version")
+  /// Every non-terminal state has a deadline, so nothing stays in progress forever.
+  stateDeadlineAt    DateTime?     @map("state_deadline_at") @db.Timestamptz(3)
+  /// `{ "cpus": 0.5, "memoryMb": 512 }`
+  resources          Json          @default("{\"cpus\": 0.5, \"memoryMb\": 512}")
+  failureCode        String?       @map("failure_code")
+  failureDetail      String?       @map("failure_detail")
+  /// Container name (`mo-rev-<id>`) or pod name.
+  runtimeRef         String?       @map("runtime_ref")
+  readyAt            DateTime?     @map("ready_at") @db.Timestamptz(3)
+  /// DRAINING: keep the container warm until this time, then retire it.
+  drainUntil         DateTime?     @map("drain_until") @db.Timestamptz(3)
+  retiredAt          DateTime?     @map("retired_at") @db.Timestamptz(3)
+  /// Self-healing budget: at most 3 restarts in a 10-minute window, then FAILED.
+  restartCount       Int           @default(0) @map("restart_count")
+  restartWindowStart DateTime?     @map("restart_window_start") @db.Timestamptz(3)
+  previousRevisionId String?       @map("previous_revision_id") @db.Uuid
+  requestedById      String        @map("requested_by_id") @db.Uuid
+  createdAt          DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  org          Organization      @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  endpoint     Endpoint          @relation("EndpointRevisions", fields: [endpointId], references: [id], onDelete: Cascade)
+  modelVersion ModelVersion      @relation(fields: [modelVersionId], references: [id])
+  requestedBy  User              @relation(fields: [requestedById], references: [id])
+  stableFor    Endpoint?         @relation("StableRevision")
+  events       DeploymentEvent[]
+
+  @@unique([endpointId, revisionNumber])
+  @@index([state, stateDeadlineAt])
+  @@index([orgId, createdAt(sort: Desc)])
+  @@map("deployment_revisions")
+}
+
+/// The revision timeline: one row per state transition (written in the same transaction).
+model DeploymentEvent {
+  id         BigInt         @id @default(autoincrement())
+  orgId      String         @map("org_id") @db.Uuid
+  revisionId String         @map("revision_id") @db.Uuid
+  fromState  RevisionState? @map("from_state")
+  toState    RevisionState  @map("to_state")
+  message    String
+  metadata   Json           @default("{}")
+  createdAt  DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  revision DeploymentRevision @relation(fields: [revisionId], references: [id], onDelete: Cascade)
+
+  @@index([revisionId, id])
+  @@map("deployment_events")
+}
+
+/// Transactional outbox (ADR-0004): written with the aggregate, dispatched to BullMQ by the relay.
+model OutboxMessage {
+  id            String    @id @default(uuid()) @db.Uuid
+  type          String
+  aggregateType String    @map("aggregate_type")
+  aggregateId   String    @map("aggregate_id") @db.Uuid
+  payload       Json      @default("{}")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  dispatchedAt  DateTime? @map("dispatched_at") @db.Timestamptz(3)
+  attempts      Int       @default(0)
+  lastError     String?   @map("last_error")
+
+  @@index([dispatchedAt, createdAt])
+  @@map("outbox_messages")
+}
+
+/// `Idempotency-Key` replay store, scoped per organization, kept 24 h (docs/04).
+model IdempotencyKey {
+  orgId        String   @map("org_id") @db.Uuid
+  key          String
+  /// SHA-256 of method + route + body: the same key with a different request is a 409.
+  requestHash  String   @map("request_hash") @db.Char(64)
+  statusCode   Int      @map("status_code")
+  responseBody Json     @map("response_body")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  expiresAt    DateTime @map("expires_at") @db.Timestamptz(3)
+
+  @@id([orgId, key])
+  @@index([expiresAt])
+  @@map("idempotency_keys")
+}
+
+/// Project-scoped inference key `mo_<prefix>_<secret>` (ADR-0006). Only an HMAC of the secret is stored.
+model ApiKey {
+  id          String    @id @default(uuid()) @db.Uuid
+  orgId       String    @map("org_id") @db.Uuid
+  projectId   String    @map("project_id") @db.Uuid
+  name        String
+  /// Public lookup id (the `<prefix>` part), safe to show and log.
+  prefix      String    @unique
+  /// HMAC-SHA256(pepper, secret)
+  secretHash  Bytes     @map("secret_hash")
+  scopes      String[]  @default(["predict"])
+  expiresAt   DateTime? @map("expires_at") @db.Timestamptz(3)
+  lastUsedAt  DateTime? @map("last_used_at") @db.Timestamptz(3)
+  revokedAt   DateTime? @map("revoked_at") @db.Timestamptz(3)
+  createdById String    @map("created_by_id") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  project   Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy User         @relation(fields: [createdById], references: [id])
+
+  @@index([projectId, createdAt(sort: Desc)])
+  @@map("api_keys")
 }
