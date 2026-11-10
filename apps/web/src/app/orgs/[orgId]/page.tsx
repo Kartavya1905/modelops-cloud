@@ -1,6 +1,8 @@
-import { redirect } from 'next/navigation';
+import type { Metadata } from 'next';
+import { OverviewPage } from '@/features/org/overview-page';
 
-export default async function OrgIndex({ params }: { params: Promise<{ orgId: string }> }) {
-  const { orgId } = await params;
-  redirect(`/orgs/${orgId}/projects`);
+export const metadata: Metadata = { title: 'Overview' };
+
+export default function Page() {
+  return <OverviewPage />;
 }

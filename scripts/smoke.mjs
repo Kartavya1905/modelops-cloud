@@ -39,6 +39,7 @@ const EXPECTED_SERVICES = [
   'ml-worker',
   'docker-proxy',
   'gateway',
+  'prometheus',
 ];
 const EXPECTED_BUCKETS = [
   'mlflow-artifacts',
@@ -53,6 +54,7 @@ const mlWorkerUrl = env.MO_ML_WORKER_URL;
 const dockerProxyUrl = env.MO_DOCKER_PROXY_URL;
 const gatewayUrl = env.MO_GATEWAY_URL;
 const gatewayAdminUrl = env.MO_GATEWAY_ADMIN_URL;
+const prometheusUrl = env.MO_PROMETHEUS_URL;
 const apiUrl = env.MO_API_URL;
 const webUrl = `http://127.0.0.1:${env.MO_PORT_WEB ?? '3300'}`;
 
@@ -355,6 +357,22 @@ await check('gateway: internal admin API refuses requests without the token', as
   const metrics = await http(`${gatewayAdminUrl}/metrics`);
   assert(metrics.text.includes('gateway_'), 'no gateway metrics exposed');
   return 'HTTP 401; /metrics served';
+});
+
+// ------------------------------------------------------------- Prometheus (M6)
+await check('prometheus: ready and scraping the gateway', async () => {
+  const ready = await http(`${prometheusUrl}/-/ready`);
+  assert(ready.status === 200, `ready: HTTP ${ready.status}`);
+  // The first scrape can take one interval (5 s) after a fresh start.
+  for (let i = 0; i < 12; i++) {
+    const r = await http(
+      `${prometheusUrl}/api/v1/query?query=${encodeURIComponent('up{job="gateway",stack="dev"}')}`,
+    );
+    const value = JSON.parse(r.text).data?.result?.[0]?.value?.[1];
+    if (value === '1') return 'gateway target up';
+    await new Promise((res) => setTimeout(res, 1000));
+  }
+  throw new Error('the dev gateway target is not up in Prometheus');
 });
 
 // --------------------------------------------------------------------- MLflow

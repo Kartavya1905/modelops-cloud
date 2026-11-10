@@ -55,7 +55,7 @@ All host ports bind to `127.0.0.1` and are set in `.env`. Defaults deliberately 
 | Gateway (public) | `18088` | M5 | Inference API (`/v1/endpoints/<slug>/predict`). 18080 is avoided: another local project uses it |
 | Gateway (admin) | `18089` | M5 | Internal: worker probes (token) and `/metrics` |
 | Docker socket proxy | `12375` | M5 | Worker only; containers + images APIs only |
-| Prometheus | `19090` | M10 | observability profile |
+| Prometheus | `19090` | M6 | Scrapes the gateways every 5 s; the API reads it via allow-listed queries |
 | Grafana | `13001` | M10 | observability profile |
 | ML worker (validator) | `18100` | M4 | Bound to 127.0.0.1; every request needs `X-ModelOps-Token` (238 MiB measured idle) |
 | Model servers | — | M5 | internal `inference` network only |

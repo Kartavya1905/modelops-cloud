@@ -250,6 +250,32 @@ const ROUTES: RouteCase[] = [
     call: (c) =>
       c.as.post(`/orgs/${c.orgId}/projects/${c.projectId}/api-keys`, { name: 'matrix key' }),
   },
+  // ---- M6: dashboards, playground, overview
+  {
+    name: 'GET endpoint metrics',
+    permission: 'endpoint:read',
+    call: (c) => c.as.get(`/orgs/${c.orgId}/endpoints/${c.endpointId}/metrics?range=15m`),
+  },
+  {
+    name: 'GET org overview',
+    permission: 'org:read',
+    call: (c) => c.as.get(`/orgs/${c.orgId}/overview`),
+  },
+  {
+    name: 'GET playground',
+    permission: 'endpoint:read',
+    call: (c) => c.as.get(`/orgs/${c.orgId}/endpoints/${c.endpointId}/playground`),
+  },
+  {
+    name: 'POST playground predict',
+    permission: 'endpoint:read',
+    // nothing is deployed on the matrix endpoint: any answer but 403 proves authorization passed
+    allowedIf: (res) => res.status !== 403,
+    call: (c) =>
+      c.as.post(`/orgs/${c.orgId}/endpoints/${c.endpointId}/playground/predict`, {
+        inputs: [{ a: 1 }],
+      }),
+  },
   {
     name: 'DELETE api key',
     permission: 'apikey:manage',

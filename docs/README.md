@@ -28,6 +28,7 @@ Phase 0 design set. Read in order for the full picture, or jump to what an inter
 | M3 | [MLflow integration, experiments and model registry](milestones/m3-experiments-registry.md) |
 | M4 | [Model validation and artifact storage](milestones/m4-validation-artifacts.md) |
 | M5 | [Inference deployment pipeline](milestones/m5-deployment-pipeline.md) |
+| M6 | [Prediction playground and operational dashboard](milestones/m6-playground-dashboard.md) |
 
 ## Architecture Decision Records
 

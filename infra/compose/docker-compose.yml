@@ -306,6 +306,31 @@ services:
         condition: service_healthy
     networks: [backend, inference]
 
+  # ------------------------------------------------------------- Prometheus (M6)
+  # Time series for the endpoint dashboards. Short retention: this is a laptop, not a SaaS.
+  prometheus:
+    <<: *hardening
+    image: prom/prometheus:v3.15.1
+    read_only: true
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=2d
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - promdata:/prometheus
+    ports:
+      - '127.0.0.1:${MO_PORT_PROMETHEUS:-19090}:9090'
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:9090/-/ready']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    deploy:
+      resources:
+        limits: { cpus: '0.5', memory: 256M }
+    networks: [backend]
+
   # Build-only: the image the worker starts once per revision (`pnpm dev:up` builds it).
   model-server:
     image: modelops/model-server:dev
@@ -323,5 +348,6 @@ networks:
 
 volumes:
   pgdata:
+  promdata:
   redisdata:
   s3data:

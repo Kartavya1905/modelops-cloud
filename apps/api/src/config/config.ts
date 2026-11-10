@@ -47,6 +47,8 @@ const ConfigSchema = z.object({
   MO_DEPLOY_RELAY_MS: z.coerce.number().int().min(50).max(60_000).default(500),
   MO_RECONCILE_MS: z.coerce.number().int().min(200).max(600_000).default(15_000),
   MO_DRAIN_GRACE_MS: z.coerce.number().int().min(0).max(86_400_000).default(1_800_000),
+  // M6: dashboards read Prometheus through allow-listed queries only
+  MO_PROMETHEUS_URL: z.url({ protocol: /^https?$/ }).default('http://127.0.0.1:19090'),
   /** Labels every container this deployment creates; a reconciler only manages its own. */
   MO_INSTANCE_ID: z
     .string()
@@ -78,6 +80,7 @@ export interface AppConfig {
   validation: { sweepMs: number; leaseMs: number; maxAttempts: number };
   /** HMAC pepper for inference API keys (shared with the gateway, ADR-0006). */
   apiKeyPepper: string;
+  prometheusUrl: string;
   deploy: {
     dockerProxyUrl: string;
     modelServerImage: string;
@@ -135,6 +138,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       maxAttempts: c.MO_VALIDATION_MAX_ATTEMPTS,
     },
     apiKeyPepper: c.MO_API_KEY_PEPPER,
+    prometheusUrl: c.MO_PROMETHEUS_URL.replace(/\/+$/, ''),
     deploy: {
       dockerProxyUrl: c.MO_DOCKER_PROXY_URL.replace(/\/+$/, ''),
       modelServerImage: c.MO_MODEL_SERVER_IMAGE,

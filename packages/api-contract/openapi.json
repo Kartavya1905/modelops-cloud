@@ -1903,6 +1903,201 @@
           "api-keys"
         ]
       }
+    },
+    "/api/v1/orgs/{orgId}/endpoints/{endpointId}/playground": {
+      "get": {
+        "operationId": "Playground_info",
+        "parameters": [
+          {
+            "name": "orgId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "endpointId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaygroundInfoDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "playground"
+        ]
+      }
+    },
+    "/api/v1/orgs/{orgId}/endpoints/{endpointId}/playground/predict": {
+      "post": {
+        "operationId": "Playground_predict",
+        "parameters": [
+          {
+            "name": "orgId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "endpointId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlaygroundPredictDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaygroundResultDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "playground"
+        ]
+      }
+    },
+    "/api/v1/orgs/{orgId}/endpoints/{endpointId}/metrics": {
+      "get": {
+        "operationId": "Metrics_endpointMetrics",
+        "parameters": [
+          {
+            "name": "orgId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "endpointId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "series",
+            "required": false,
+            "in": "query",
+            "description": "Comma-separated subset of: rps, latency, errorRate, status. No other parameters and no PromQL are accepted.",
+            "schema": {}
+          },
+          {
+            "name": "range",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "15m",
+                "1h",
+                "6h",
+                "24h"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EndpointMetricsDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "metrics"
+        ]
+      }
+    },
+    "/api/v1/orgs/{orgId}/overview": {
+      "get": {
+        "operationId": "Metrics_overview",
+        "parameters": [
+          {
+            "name": "orgId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgOverviewDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "metrics"
+        ]
+      }
     }
   },
   "info": {
@@ -4091,6 +4286,436 @@
           "revokedAt",
           "createdByName",
           "key"
+        ]
+      },
+      "PlaygroundInfoDto": {
+        "type": "object",
+        "properties": {
+          "ready": {
+            "type": "boolean",
+            "description": "false until a revision is READY"
+          },
+          "features": {
+            "description": "Input fields, in signature order",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "classes": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "examples": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "number"
+              }
+            },
+            "description": "Up to 5 golden examples of the serving version, ready to send"
+          },
+          "modelName": {
+            "type": "string",
+            "nullable": true
+          },
+          "modelVersion": {
+            "type": "number",
+            "nullable": true
+          },
+          "revisionId": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "ready",
+          "features",
+          "classes",
+          "examples",
+          "modelName",
+          "modelVersion",
+          "revisionId"
+        ]
+      },
+      "PlaygroundPredictDto": {
+        "type": "object",
+        "properties": {
+          "inputs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "number"
+              }
+            },
+            "minItems": 1,
+            "maxItems": 20
+          }
+        },
+        "required": [
+          "inputs"
+        ]
+      },
+      "PlaygroundModelDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "version": {
+            "type": "number"
+          },
+          "framework": {
+            "type": "string",
+            "enum": [
+              "SKLEARN_ONNX",
+              "PYTORCH_ONNX"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "version",
+          "framework"
+        ]
+      },
+      "PlaygroundOutputDto": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "oneOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "probabilities": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number"
+            }
+          }
+        },
+        "required": [
+          "label",
+          "probabilities"
+        ]
+      },
+      "PlaygroundResultDto": {
+        "type": "object",
+        "properties": {
+          "predictionIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "model": {
+            "$ref": "#/components/schemas/PlaygroundModelDto"
+          },
+          "revisionId": {
+            "type": "string"
+          },
+          "outputs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlaygroundOutputDto"
+            }
+          },
+          "latencyMs": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "predictionIds",
+          "model",
+          "revisionId",
+          "outputs",
+          "latencyMs"
+        ]
+      },
+      "MetricsSummaryDto": {
+        "type": "object",
+        "properties": {
+          "requests": {
+            "type": "number",
+            "description": "Exact requests in the range (counter difference, not extrapolated)"
+          },
+          "serverErrors": {
+            "type": "number",
+            "description": "Requests answered 5xx in the range"
+          },
+          "clientErrors": {
+            "type": "number",
+            "description": "Requests answered 4xx in the range (bad inputs, rate limits, keys)"
+          },
+          "playground": {
+            "type": "number",
+            "description": "Playground calls included in `requests`"
+          },
+          "p95Ms": {
+            "type": "number",
+            "nullable": true,
+            "description": "Latest p95 latency (ms)"
+          },
+          "avgRps": {
+            "type": "number",
+            "description": "Average requests per second over the range"
+          }
+        },
+        "required": [
+          "requests",
+          "serverErrors",
+          "clientErrors",
+          "playground",
+          "p95Ms",
+          "avgRps"
+        ]
+      },
+      "MetricPointValueDto": {
+        "type": "object",
+        "properties": {
+          "t": {
+            "type": "number",
+            "description": "Unix time in seconds"
+          },
+          "v": {
+            "type": "number",
+            "nullable": true,
+            "description": "null where there was no data"
+          }
+        },
+        "required": [
+          "t",
+          "v"
+        ]
+      },
+      "MetricLineDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "v4"
+          },
+          "points": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MetricPointValueDto"
+            }
+          }
+        },
+        "required": [
+          "name",
+          "points"
+        ]
+      },
+      "EndpointMetricsDto": {
+        "type": "object",
+        "properties": {
+          "range": {
+            "type": "string",
+            "enum": [
+              "15m",
+              "1h",
+              "6h",
+              "24h"
+            ]
+          },
+          "stepSeconds": {
+            "type": "number",
+            "description": "Seconds between points"
+          },
+          "start": {
+            "type": "number"
+          },
+          "end": {
+            "type": "number"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/MetricsSummaryDto"
+          },
+          "rps": {
+            "description": "Requests/s by model version",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MetricLineDto"
+            }
+          },
+          "latency": {
+            "description": "p50 / p95 / p99 latency in ms",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MetricLineDto"
+            }
+          },
+          "errorRate": {
+            "description": "Share of requests answered 5xx (0-1)",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MetricLineDto"
+            }
+          },
+          "status": {
+            "description": "Requests/s by HTTP status",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MetricLineDto"
+            }
+          }
+        },
+        "required": [
+          "range",
+          "stepSeconds",
+          "start",
+          "end",
+          "summary",
+          "rps",
+          "latency",
+          "errorRate",
+          "status"
+        ]
+      },
+      "StateCountDto": {
+        "type": "object",
+        "properties": {
+          "state": {
+            "type": "string"
+          },
+          "count": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "state",
+          "count"
+        ]
+      },
+      "RecentDeploymentDto": {
+        "type": "object",
+        "properties": {
+          "revisionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revisionNumber": {
+            "type": "number"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "REQUESTED",
+              "AWAITING_APPROVAL",
+              "QUEUED",
+              "PROVISIONING",
+              "LOADING",
+              "VERIFYING",
+              "READY",
+              "DEGRADED",
+              "DRAINING",
+              "RETIRED",
+              "FAILED",
+              "CANCELLED"
+            ]
+          },
+          "endpointId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "endpointName": {
+            "type": "string"
+          },
+          "modelName": {
+            "type": "string"
+          },
+          "modelVersion": {
+            "type": "number"
+          },
+          "failureCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "revisionId",
+          "revisionNumber",
+          "state",
+          "endpointId",
+          "endpointName",
+          "modelName",
+          "modelVersion",
+          "failureCode",
+          "createdAt"
+        ]
+      },
+      "OrgOverviewDto": {
+        "type": "object",
+        "properties": {
+          "projects": {
+            "type": "number"
+          },
+          "models": {
+            "type": "number"
+          },
+          "versions": {
+            "description": "Model versions by validation status",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StateCountDto"
+            }
+          },
+          "endpoints": {
+            "type": "number"
+          },
+          "servingEndpoints": {
+            "type": "number",
+            "description": "Endpoints whose stable revision is READY"
+          },
+          "deployments7d": {
+            "description": "Revisions created in the last 7 days",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StateCountDto"
+            }
+          },
+          "requests24h": {
+            "type": "number",
+            "nullable": true,
+            "description": "Predict requests in the last 24 h across all endpoints (null: metrics unavailable)"
+          },
+          "recentDeployments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecentDeploymentDto"
+            }
+          }
+        },
+        "required": [
+          "projects",
+          "models",
+          "versions",
+          "endpoints",
+          "servingEndpoints",
+          "deployments7d",
+          "requests24h",
+          "recentDeployments"
         ]
       }
     }

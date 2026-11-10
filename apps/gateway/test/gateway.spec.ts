@@ -77,12 +77,17 @@ async function setup(
   });
   await routing.refresh();
   const counts = new Map<string, number>();
-  const limiter = new RateLimiter({
-    incr: (k) => {
-      counts.set(k, (counts.get(k) ?? 0) + 1);
-      return Promise.resolve(counts.get(k) ?? 0);
+  // A frozen clock: every request in a test falls into the same one-second window.
+  const limiter = new RateLimiter(
+    {
+      incr: (k) => {
+        counts.set(k, (counts.get(k) ?? 0) + 1);
+        return Promise.resolve(counts.get(k) ?? 0);
+      },
     },
-  });
+    () => undefined,
+    () => 1_700_000_000_000,
+  );
   const calls: { url: string; body: unknown }[] = [];
   const upstream =
     opts.upstream ??
@@ -259,9 +264,7 @@ describe('predict', () => {
       codes.push(res.statusCode);
       if (res.statusCode === 429) expect(res.headers['retry-after']).toBe('1');
     }
-    // limit is 3 rps; a second boundary in the middle can only allow more, never fewer
-    expect(codes.filter((c) => c === 200).length).toBeGreaterThanOrEqual(3);
-    expect(codes.filter((c) => c === 429).length).toBeGreaterThanOrEqual(1);
+    expect(codes).toEqual([200, 200, 200, 429, 429]); // limit 3 rps, same second
   });
 
   it('times out slow model servers (504) and opens the circuit after repeated failures', async () => {
@@ -325,9 +328,54 @@ describe('admin API', () => {
       payload: { inputs: [row] },
     });
     const text = (await admin.inject({ url: '/metrics' })).body;
-    expect(text).toContain(
-      `gateway_requests_total{endpoint="churn",revision="${REV}",model_version="4",code="200"} 1`,
-    );
+    const line = text.split('\n').find((l) => l.startsWith('gateway_requests_total{'));
+    for (const label of [
+      'endpoint_id="ep-1"',
+      'endpoint="churn"',
+      `revision="${REV}"`,
+      'model_version="4"',
+      'code="200"',
+      'source="api"',
+    ]) {
+      expect(line).toContain(label);
+    }
+    expect(line?.endsWith(' 1')).toBe(true);
+  });
+
+  it('playground route: token + user id required, same pipeline, own source label and limit', async () => {
+    const { admin, calls } = await setup({ rateLimitRps: 100 });
+    const user = '99999999-8888-7777-6666-555555555555';
+    const send = (headers: Record<string, string>, payload: object = { inputs: [row] }) =>
+      admin.inject({ method: 'POST', url: '/internal/endpoints/ep-1/predict', headers, payload });
+
+    expect((await send({ 'x-playground-actor': user })).statusCode).toBe(401); // no token
+    expect((await send({ 'x-modelops-token': TOKEN })).statusCode).toBe(400); // no actor
+    const unknown = await admin.inject({
+      method: 'POST',
+      url: '/internal/endpoints/nope/predict',
+      headers: { 'x-modelops-token': TOKEN, 'x-playground-actor': user },
+      payload: { inputs: [row] },
+    });
+    expect(unknown.statusCode).toBe(404);
+
+    const auth = { 'x-modelops-token': TOKEN, 'x-playground-actor': user };
+    const ok = await send(auth);
+    expect(ok.statusCode).toBe(200);
+    expect(calls).toHaveLength(1);
+    expect((await send(auth, { inputs: [{ a: 1 }] })).statusCode).toBe(400); // signature checked
+
+    // At most 5 per second per user, whatever the endpoint allows (100 here). Two calls above
+    // count too (the 200 and the 400), so 3 more pass, then 429.
+    const codes: number[] = [];
+    for (let i = 0; i < 5; i++) codes.push((await send(auth)).statusCode);
+    expect(codes).toEqual([200, 200, 200, 429, 429]);
+
+    const text = (await admin.inject({ url: '/metrics' })).body;
+    const playground = text
+      .split('\n')
+      .filter((l) => l.startsWith('gateway_requests_total{') && l.includes('source="playground"'));
+    expect(playground.find((l) => l.includes('code="200"'))).toMatch(/ 4$/);
+    expect(playground.find((l) => l.includes('code="429"'))).toMatch(/ 2$/);
   });
 });
 

@@ -10,6 +10,7 @@ import { AuditModule } from './modules/audit/audit.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { DeploymentsModule } from './modules/deployments/deployments.module';
 import { ExperimentsModule } from './modules/experiments/experiments.module';
+import { MetricsModule } from './modules/metrics/metrics.module';
 import { MlflowModule } from './modules/mlflow/mlflow.module';
 import { OrganizationsModule } from './modules/organizations/organizations.module';
 import { ProjectsModule } from './modules/projects/projects.module';
@@ -36,6 +37,7 @@ import { ValidationModule } from './modules/validation/validation.module';
     ValidationModule,
     RegistryModule,
     DeploymentsModule,
+    MetricsModule,
   ],
   providers: [{ provide: APP_FILTER, useClass: ProblemFilter }],
 })

@@ -35,4 +35,10 @@ export class RoutingTable {
   lookup(projectId: string, slug: string): RoutedEndpoint | undefined {
     return this.snapshot?.endpoints[`${projectId}/${slug}`];
   }
+
+  /** For the internal playground route, which knows the endpoint id rather than the slug. */
+  lookupById(endpointId: string): RoutedEndpoint | undefined {
+    if (!this.snapshot) return undefined;
+    return Object.values(this.snapshot.endpoints).find((e) => e.endpointId === endpointId);
+  }
 }

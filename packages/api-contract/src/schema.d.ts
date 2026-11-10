@@ -212,6 +212,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/orgs/{orgId}/endpoints/{endpointId}/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["Metrics_endpointMetrics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orgs/{orgId}/endpoints/{endpointId}/playground": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["Playground_info"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orgs/{orgId}/endpoints/{endpointId}/playground/predict": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["Playground_predict"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/orgs/{orgId}/endpoints/{endpointId}/revisions": {
         parameters: {
             query?: never;
@@ -366,6 +414,22 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["Registry_uploadVersion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orgs/{orgId}/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["Metrics_overview"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -766,6 +830,23 @@ export interface components {
             slug: string;
             stableRevision: components["schemas"]["RevisionSummaryDto"] | null;
         };
+        EndpointMetricsDto: {
+            end: number;
+            /** @description Share of requests answered 5xx (0-1) */
+            errorRate: components["schemas"]["MetricLineDto"][];
+            /** @description p50 / p95 / p99 latency in ms */
+            latency: components["schemas"]["MetricLineDto"][];
+            /** @enum {string} */
+            range: "15m" | "1h" | "6h" | "24h";
+            /** @description Requests/s by model version */
+            rps: components["schemas"]["MetricLineDto"][];
+            start: number;
+            /** @description Requests/s by HTTP status */
+            status: components["schemas"]["MetricLineDto"][];
+            /** @description Seconds between points */
+            stepSeconds: number;
+            summary: components["schemas"]["MetricsSummaryDto"];
+        };
         ExperimentDto: {
             /** @description MLflow experiment id */
             experimentId: string;
@@ -822,9 +903,34 @@ export interface components {
             /** @enum {string} */
             role: "OWNER" | "ADMIN" | "ML_ENGINEER" | "VIEWER";
         };
+        MetricLineDto: {
+            /** @example v4 */
+            name: string;
+            points: components["schemas"]["MetricPointValueDto"][];
+        };
         MetricPointDto: {
             step: number;
             value: number;
+        };
+        MetricPointValueDto: {
+            /** @description Unix time in seconds */
+            t: number;
+            /** @description null where there was no data */
+            v: number | null;
+        };
+        MetricsSummaryDto: {
+            /** @description Average requests per second over the range */
+            avgRps: number;
+            /** @description Requests answered 4xx in the range (bad inputs, rate limits, keys) */
+            clientErrors: number;
+            /** @description Latest p95 latency (ms) */
+            p95Ms: number | null;
+            /** @description Playground calls included in `requests` */
+            playground: number;
+            /** @description Exact requests in the range (counter difference, not extrapolated) */
+            requests: number;
+            /** @description Requests answered 5xx in the range */
+            serverErrors: number;
         };
         ModelDetailDto: {
             /** Format: date-time */
@@ -938,6 +1044,58 @@ export interface components {
             role: "OWNER" | "ADMIN" | "ML_ENGINEER" | "VIEWER";
             slug: string;
         };
+        OrgOverviewDto: {
+            /** @description Revisions created in the last 7 days */
+            deployments7d: components["schemas"]["StateCountDto"][];
+            endpoints: number;
+            models: number;
+            projects: number;
+            recentDeployments: components["schemas"]["RecentDeploymentDto"][];
+            /** @description Predict requests in the last 24 h across all endpoints (null: metrics unavailable) */
+            requests24h: number | null;
+            /** @description Endpoints whose stable revision is READY */
+            servingEndpoints: number;
+            /** @description Model versions by validation status */
+            versions: components["schemas"]["StateCountDto"][];
+        };
+        PlaygroundInfoDto: {
+            classes: (number | string)[];
+            /** @description Up to 5 golden examples of the serving version, ready to send */
+            examples: {
+                [key: string]: number;
+            }[];
+            /** @description Input fields, in signature order */
+            features: string[];
+            modelName: string | null;
+            modelVersion: number | null;
+            /** @description false until a revision is READY */
+            ready: boolean;
+            revisionId: string | null;
+        };
+        PlaygroundModelDto: {
+            /** @enum {string} */
+            framework: "SKLEARN_ONNX" | "PYTORCH_ONNX";
+            name: string;
+            version: number;
+        };
+        PlaygroundOutputDto: {
+            label: number | string;
+            probabilities: {
+                [key: string]: number;
+            };
+        };
+        PlaygroundPredictDto: {
+            inputs: {
+                [key: string]: number;
+            }[];
+        };
+        PlaygroundResultDto: {
+            latencyMs: number;
+            model: components["schemas"]["PlaygroundModelDto"];
+            outputs: components["schemas"]["PlaygroundOutputDto"][];
+            predictionIds: string[];
+            revisionId: string;
+        };
         ProjectDto: {
             /** Format: date-time */
             archivedAt: string | null;
@@ -965,6 +1123,21 @@ export interface components {
             id: string;
             name: string;
             slug: string;
+        };
+        RecentDeploymentDto: {
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            endpointId: string;
+            endpointName: string;
+            failureCode: string | null;
+            modelName: string;
+            modelVersion: number;
+            /** Format: uuid */
+            revisionId: string;
+            revisionNumber: number;
+            /** @enum {string} */
+            state: "REQUESTED" | "AWAITING_APPROVAL" | "QUEUED" | "PROVISIONING" | "LOADING" | "VERIFYING" | "READY" | "DEGRADED" | "DRAINING" | "RETIRED" | "FAILED" | "CANCELLED";
         };
         RegisterDto: {
             /** @example ada@example.com */
@@ -1116,6 +1289,10 @@ export interface components {
             signatureVersion: number;
             /** @enum {string} */
             task: "binary_classification";
+        };
+        StateCountDto: {
+            count: number;
+            state: string;
         };
         TensorSpecDto: {
             classes?: (number | string)[];
@@ -1488,6 +1665,80 @@ export interface operations {
             };
         };
     };
+    Metrics_endpointMetrics: {
+        parameters: {
+            query?: {
+                range?: "15m" | "1h" | "6h" | "24h";
+                /** @description Comma-separated subset of: rps, latency, errorRate, status. No other parameters and no PromQL are accepted. */
+                series?: unknown;
+            };
+            header?: never;
+            path: {
+                endpointId: string;
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EndpointMetricsDto"];
+                };
+            };
+        };
+    };
+    Playground_info: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                endpointId: string;
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaygroundInfoDto"];
+                };
+            };
+        };
+    };
+    Playground_predict: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                endpointId: string;
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlaygroundPredictDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaygroundResultDto"];
+                };
+            };
+        };
+    };
     Endpoints_deploy: {
         parameters: {
             query?: never;
@@ -1788,6 +2039,27 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ModelVersionDto"];
+                };
+            };
+        };
+    };
+    Metrics_overview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgOverviewDto"];
                 };
             };
         };

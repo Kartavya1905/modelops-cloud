@@ -129,7 +129,8 @@ Role abbreviations: **O** Owner, **A** Admin, **E** ML Engineer, **V** Viewer. "
 | PUT | `/orgs/{orgId}/endpoints/{endpointId}/canary` | O, A (prod), E (staging) | `{ revisionId, weight }` + `If-Match` |
 | POST | `/orgs/{orgId}/endpoints/{endpointId}/promote` | O, A (prod), E (staging) | Canary → stable |
 | POST | `/orgs/{orgId}/endpoints/{endpointId}/rollback` | O, A (prod), E (staging) | `{ targetRevisionId? }`, defaults to the last healthy one |
-| POST | `/orgs/{orgId}/endpoints/{endpointId}/playground/predict` | Any | Playground call (server-side, uses an internal key, rate-limited) |
+| GET | `/orgs/{orgId}/endpoints/{endpointId}/playground` | Any | Signature features + up to 5 golden examples of the serving version (M6) |
+| POST | `/orgs/{orgId}/endpoints/{endpointId}/playground/predict` | Any | Playground call: the API forwards it to the gateway's token-protected internal route, so it gets the same validation and metrics (`source="playground"`), 5 req/s per user. No API-key secret is stored (M6) |
 
 ### Approvals
 | Method | Path | Role | Description |
@@ -141,7 +142,8 @@ Role abbreviations: **O** Owner, **A** Admin, **E** ML Engineer, **V** Viewer. "
 ### Monitoring
 | Method | Path | Role | Description |
 |---|---|---|---|
-| GET | `/orgs/{orgId}/endpoints/{endpointId}/metrics?range=1h&step=30s` | Any | Pre-defined series (rps, p50/p95/p99, errors, split, cpu, mem). **No arbitrary PromQL** |
+| GET | `/orgs/{orgId}/endpoints/{endpointId}/metrics?range=1h&series=rps,latency` | Any | `range` ∈ 15m, 1h, 6h, 24h; `series` ⊆ rps (by model version), latency (p50/p95/p99), errorRate, status. Exact request counts in `summary`. Any other parameter → 400. **No arbitrary PromQL** (M6; CPU/memory series come with M10) |
+| GET | `/orgs/{orgId}/overview` | Any | Organization overview: counts, endpoints serving, deployments (7 d), requests (24 h), recent deployments (M6) |
 | GET | `/orgs/{orgId}/endpoints/{endpointId}/performance?window=1h` | Any | Accuracy, F1, ROC-AUC from feedback |
 | GET / POST | `/orgs/{orgId}/endpoints/{endpointId}/drift-reports` | Any / O, A, E | List / run now |
 | GET | `/orgs/{orgId}/drift-reports/{reportId}` | Any | Per-feature scores (+ presigned link to the HTML report) |

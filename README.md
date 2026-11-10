@@ -2,9 +2,9 @@
 
 A self-service platform to **train → register → validate → deploy → serve → monitor → safely release** machine-learning models, running entirely on a laptop at zero cost.
 
-> **Status: Milestone 5 of 12.** Working today: accounts and organizations with roles, projects, an audit log, training two real models into MLflow, comparing runs, registering versions with lineage, validating every version in a sandbox, and **deploying validated versions to isolated containers behind an authenticated inference gateway**. Next: a prediction playground and operational dashboard (M6). See [`PROGRESS.md`](PROGRESS.md) for exactly what is done. This README only describes implemented features.
+> **Status: Milestone 6 of 12 — the full vertical slice works.** Train two real models into MLflow, compare runs, register versions with lineage, validate every version in a sandbox, deploy it to an isolated container behind an authenticated gateway, **try it in a playground and watch its traffic, latency and errors on live dashboards**. Next: drift monitoring and evaluation gates (M7). See [`PROGRESS.md`](PROGRESS.md) for exactly what is done. This README only describes implemented features.
 
-![An endpoint serving a validated model](docs/images/m5-endpoint.png)
+![An endpoint with its playground and live traffic dashboard](docs/images/m6-endpoint.png)
 
 ## What problem does it solve?
 
@@ -17,7 +17,7 @@ Prerequisites: Docker Desktop, Node 24, pnpm 12, uv. Everything is free.
 ```bash
 pnpm install
 pnpm env:init      # generates .env with random secrets
-pnpm dev:up        # Postgres, Redis, SeaweedFS (S3), MLflow, validator, gateway, Docker proxy (health-checked)
+pnpm dev:up        # Postgres, Redis, S3, MLflow, validator, gateway, Docker proxy, Prometheus (health-checked)
 pnpm db:deploy     # apply database migrations
 uv sync --directory ml   # Python training environment (CPU-only PyTorch)
 pnpm dev           # web http://127.0.0.1:3300 · API http://127.0.0.1:4000 (Swagger at /api/docs) · validation worker
@@ -36,6 +36,8 @@ Register a run as a version (it is validated automatically), create an endpoint,
 curl -X POST http://127.0.0.1:18088/v1/endpoints/<endpoint-slug>/predict   -H "Authorization: Bearer $MODELOPS_API_KEY" -H "Content-Type: application/json"   -d '{"inputs":[{"tenure_months":14,"monthly_charges":72.5,"support_tickets":3,"contract_type":1,"late_payments":0,"usage_hours":41.2}]}'
 ```
 
+Or skip curl: the endpoint page has a playground, and `pnpm demo:traffic --endpoint <slug> --key <key>` sends steady k6 traffic so the dashboard has something to show.
+
 ## What works today
 
 | Area | Implemented |
@@ -50,22 +52,23 @@ curl -X POST http://127.0.0.1:18088/v1/endpoints/<endpoint-slug>/predict   -H "A
 | Registry | Models and immutable numbered versions with signature, metrics and dataset lineage (SHA-256), mirrored to MLflow's registry; register a run or upload a bundle |
 | Deployment | One hardened container per revision (non-root, read-only, no capabilities, internal network only); durable requests (transactional outbox + Idempotency-Key); state machine with compare-and-set and deadlines; checksum-verified loading; golden-example check before traffic; blue/green switch; self-healing reconciler |
 | Inference | Gateway at `127.0.0.1:18088`: project-scoped API keys (HMAC, revocable in seconds), per-key rate limits, input validation against the model signature, circuit breaker, Prometheus metrics by model version |
+| Observability | Prediction playground generated from the model signature; per-endpoint dashboard (requests by model version, p50/p95/p99, error rate, status codes) from Prometheus through allow-listed queries only; exact request counts; organization overview; `pnpm demo:traffic` (k6) |
 | Validation | Content-addressed storage (`sha256/<hash>`, never overwritten); a sandboxed validator rejects pickles, external data, unknown operators, signature mismatches, golden-example drift, slow models and tampered bytes (V1–V11); live checklist in the UI; durable queue with retries and crash recovery |
 | API contract | OpenAPI generated from the NestJS code → typed web client; CI fails on drift |
 
 ## Tests
 
 ```bash
-pnpm test               # unit + component (214 API, 12 gateway, 35 web)
+pnpm test               # unit + component (229 API, 13 gateway, 43 web)
 pnpm ml:test            # 32 Python tests (dataset determinism, ONNX parity, bundles)
-pnpm test:integration   # 221 tests against real Postgres, Redis, MLflow, S3, validator and Docker (throwaway DB)
+pnpm test:integration   # 242 tests against real Postgres, Redis, MLflow, S3, validator, Docker, Prometheus, k6
 uv run --directory services/ml-worker pytest   # 31 validator tests incl. adversarial artifacts
 uv run --directory services/model-server pytest   # 14 model-server tests (checksum, inputs)
 pnpm test:e2e           # Playwright journeys incl. real model training + axe accessibility checks
-pnpm test:smoke         # 23 environment checks
+pnpm test:smoke         # 24 environment checks
 ```
 
-Results and details: [M1](docs/milestones/m1-local-environment.md) · [M2](docs/milestones/m2-auth-orgs-projects.md) · [M3](docs/milestones/m3-experiments-registry.md) · [M4](docs/milestones/m4-validation-artifacts.md) · [M5](docs/milestones/m5-deployment-pipeline.md) · [local development guide](docs/10-local-development.md).
+Results and details: [M1](docs/milestones/m1-local-environment.md) · [M2](docs/milestones/m2-auth-orgs-projects.md) · [M3](docs/milestones/m3-experiments-registry.md) · [M4](docs/milestones/m4-validation-artifacts.md) · [M5](docs/milestones/m5-deployment-pipeline.md) · [M6](docs/milestones/m6-playground-dashboard.md) · [local development guide](docs/10-local-development.md).
 
 ## Design
 

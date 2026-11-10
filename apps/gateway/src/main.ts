@@ -3,7 +3,7 @@ import { Redis } from 'ioredis';
 import { buildAdminApp, buildPublicApp, createMetrics } from './app.js';
 import { loadConfig } from './config.js';
 import { type ApiKeyEntry, DP, type RoutingSnapshot } from './contract.js';
-import { RateLimiter } from './guards.js';
+import { CircuitBreaker, RateLimiter } from './guards.js';
 import { KeyVerifier } from './keys.js';
 import { RoutingTable } from './routing.js';
 
@@ -63,6 +63,8 @@ async function main(): Promise<void> {
     routing,
     keys,
     limiter,
+    // One breaker for both ports, so playground and API traffic see the same upstream health.
+    breaker: new CircuitBreaker(),
     redisReady: () => redis.status === 'ready',
   };
   const pub = buildPublicApp(deps, metrics);

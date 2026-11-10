@@ -38,6 +38,8 @@ import { useOrgId } from '@/features/org/org-shell';
 import { ApiError, errorMessage } from '@/lib/api/client';
 import { cn, formatDateTime, formatRelative } from '@/lib/utils';
 import { CopyField } from './api-keys-section';
+import { EndpointDashboard } from './dashboard';
+import { Playground } from './playground';
 import { isSettled, useCancelRevision, useDeploy, useEndpoint, useRevision } from './api';
 import { PIPELINE, PIPELINE_HELP, RevisionStateBadge, stateLabel } from './labels';
 
@@ -369,6 +371,12 @@ export function EndpointPage() {
         }
       />
       <Serving orgId={orgId} endpoint={e} />
+      <Playground
+        orgId={orgId}
+        endpointId={e.id}
+        revisionId={e.stableRevision?.state === 'READY' ? e.stableRevision.id : null}
+      />
+      <EndpointDashboard orgId={orgId} endpointId={e.id} />
       {latest && <LatestDeployment orgId={orgId} endpointId={e.id} revisionId={latest.id} />}
       {e.revisions.length > 1 && (
         <Card>

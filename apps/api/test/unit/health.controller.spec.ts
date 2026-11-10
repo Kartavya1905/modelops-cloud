@@ -41,6 +41,7 @@ async function bootWith(checks: DependencyCheck[]): Promise<INestApplication> {
     mlWorker: { url: 'http://unused', token: 't' },
     validation: { sweepMs: 1000, leaseMs: 1000, maxAttempts: 1 },
     apiKeyPepper: 'p'.repeat(32),
+    prometheusUrl: 'http://127.0.0.1:4',
     deploy: {
       dockerProxyUrl: 'http://127.0.0.1:1',
       modelServerImage: 'img',

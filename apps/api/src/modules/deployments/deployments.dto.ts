@@ -18,7 +18,7 @@ import { ProjectRefDto } from '../registry/registry.dto';
 
 const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value);
 export const ENDPOINT_SLUG = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/;
-const STATES = [
+export const REVISION_STATES = [
   'REQUESTED',
   'AWAITING_APPROVAL',
   'QUEUED',
@@ -32,7 +32,7 @@ const STATES = [
   'FAILED',
   'CANCELLED',
 ] as const;
-type State = (typeof STATES)[number];
+type State = (typeof REVISION_STATES)[number];
 
 export class CreateEndpointDto {
   @ApiProperty({ example: 'Churn staging', minLength: 2, maxLength: 60 })
@@ -116,7 +116,7 @@ export class RevisionSummaryDto {
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty({ format: 'uuid' }) endpointId!: string;
   @ApiProperty() revisionNumber!: number;
-  @ApiProperty({ enum: STATES }) state!: State;
+  @ApiProperty({ enum: REVISION_STATES }) state!: State;
   @ApiProperty({ type: RevisionModelDto }) modelVersion!: RevisionModelDto;
   @ApiProperty({ type: String, nullable: true }) failureCode!: string | null;
   @ApiProperty({ type: String, nullable: true }) failureDetail!: string | null;
@@ -127,8 +127,8 @@ export class RevisionSummaryDto {
 
 export class DeploymentEventDto {
   @ApiProperty() id!: string;
-  @ApiProperty({ enum: STATES, nullable: true, type: String }) fromState!: State | null;
-  @ApiProperty({ enum: STATES }) toState!: State;
+  @ApiProperty({ enum: REVISION_STATES, nullable: true, type: String }) fromState!: State | null;
+  @ApiProperty({ enum: REVISION_STATES }) toState!: State;
   @ApiProperty() message!: string;
   @ApiProperty({ format: 'date-time' }) createdAt!: string;
 }

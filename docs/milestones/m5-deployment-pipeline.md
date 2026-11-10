@@ -1,6 +1,6 @@
 # Milestone 5 — Inference Deployment Pipeline
 
-> **Status: implemented and verified locally (2026-11-04, Windows 11 + Docker Desktop).** CI on Linux has not run yet: `PROGRESS.md` ticks M5 only after a green CI run.
+> **Status: done (2026-11-04).** Verified locally on Windows 11 with Docker Desktop, and in CI on Linux: [run 42692477539](https://github.com/Kartavya1905/modelops-cloud/actions/runs/42692477539). All five jobs passed on the first run, including the model-server image tests and the stack job, which deploys real containers through the socket proxy.
 
 ![An endpoint serving a validated model](../images/m5-endpoint.png)
 
@@ -191,7 +191,7 @@ ESLint (strict), Prettier, ruff ×3, tsc ×5, next build, contract regenerated: 
 | Inference correctness (gateway output == local ONNX Runtime output) | ✅ against the golden outputs recorded by ORT at training |
 | Deadline / timeout test | ✅ reconciler `TIMEOUT`, plus gateway upstream 504 (unit) |
 | API keys UI | ✅ |
-| CI green on Linux | ⏳ pending the next push |
+| CI green on Linux | ✅ [run 42692477539](https://github.com/Kartavya1905/modelops-cloud/actions/runs/42692477539) |
 
 ## L. Completion checklist
 
@@ -205,4 +205,4 @@ ESLint (strict), Prettier, ruff ×3, tsc ×5, next build, contract regenerated: 
 - [x] Web: endpoints, deploy dialog, live timeline, API keys
 - [x] Unit, integration (real Docker), e2e + axe, smoke
 - [x] CI: model-server job, worker + gateway in the stack job
-- [ ] Green CI run on Linux
+- [x] Green CI run on Linux

@@ -29,8 +29,8 @@ Legend: ✅ done · 🚧 in progress · ⬜ not started
 | M2 | Auth, orgs, projects, frontend foundation | ✅ | [m2-auth-orgs-projects.md](docs/milestones/m2-auth-orgs-projects.md): unit 33 + 27, integration 88/88, e2e 4/4 incl. axe, smoke 17/17 (2026-11-04); **CI green on Linux**: [run 41784543609](https://github.com/Kartavya1905/modelops-cloud/actions/runs/41784543609) |
 | M3 | MLflow, registry, experiments | ✅ | [m3-experiments-registry.md](docs/milestones/m3-experiments-registry.md): ML 32, unit 54 + 35, integration 142/142, e2e 5/5 with real training (2026-11-04); **CI green on Linux**: [run 41792113922](https://github.com/Kartavya1905/modelops-cloud/actions/runs/41792113922) |
 | M4 | Model validation and artifact storage | ✅ | [m4-validation-artifacts.md](docs/milestones/m4-validation-artifacts.md): validator 31 (Linux image), ML 32, unit 57 + 35, integration 172/172, e2e 6/6, smoke 20/20 (2026-11-04); **CI green on Linux**: [run 41886510397](https://github.com/Kartavya1905/modelops-cloud/actions/runs/41886510397) |
-| M5 | Inference deployment pipeline | 🚧 | [m5-deployment-pipeline.md](docs/milestones/m5-deployment-pipeline.md): unit 214 + 12 + 35, model server 14, integration 221/221 (real Docker), e2e 7/7, smoke 23/23 (2026-11-04); **CI on Linux pending** |
-| M6 | Playground and operational dashboard | ⬜ | — |
+| M5 | Inference deployment pipeline | ✅ | [m5-deployment-pipeline.md](docs/milestones/m5-deployment-pipeline.md): unit 214 + 12 + 35, model server 14, integration 221/221 (real Docker), e2e 7/7, smoke 23/23 (2026-11-04); **CI green on Linux**: [run 42692477539](https://github.com/Kartavya1905/modelops-cloud/actions/runs/42692477539) |
+| M6 | Playground and operational dashboard | 🚧 | [m6-playground-dashboard.md](docs/milestones/m6-playground-dashboard.md): unit 229 + 13 + 43, integration 242/242 incl. k6 count == dashboard count, e2e 8/8, smoke 24/24 (2026-11-09); **CI on Linux pending** |
 | M7 | Drift monitoring and evaluation | ⬜ | — |
 | M8 | Canary and rollback | ⬜ | — |
 | M9 | Reliability and security hardening | ⬜ | — |
@@ -59,7 +59,9 @@ Legend: ✅ done · 🚧 in progress · ⬜ not started
 - [x] Worker reaches model servers through the gateway's internal admin API (internal network; ADR-0005 addendum)
 - [x] Gateway port **18088** (not 18080, taken by another local project)
 - [x] Production endpoints + approvals → **M8**; M5 serves STAGING endpoints with a verified blue/green switch
+- [x] Prometheus → moved from M10 to **M6** (dashboards need it); Grafana, OpenTelemetry and container CPU/memory stay in M10
+- [x] Playground → gateway internal route instead of a stored internal API key (no secret at rest)
 
 ## Next actions
-1. Commit and push M5; tick it once CI is green on Linux
-2. Start M6: prediction playground and operational dashboard
+1. Commit and push M6; tick it once CI is green on Linux
+2. Start M7: drift monitoring and evaluation gates

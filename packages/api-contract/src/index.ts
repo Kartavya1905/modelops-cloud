@@ -39,3 +39,9 @@ export type RevisionState = RevisionSummary['state'];
 export type DeploymentEvent = Schemas['DeploymentEventDto'];
 export type ApiKey = Schemas['ApiKeyDto'];
 export type CreatedApiKey = Schemas['CreatedApiKeyDto'];
+// M6: playground, dashboards, overview
+export type PlaygroundInfo = Schemas['PlaygroundInfoDto'];
+export type PlaygroundResult = Schemas['PlaygroundResultDto'];
+export type EndpointMetrics = Schemas['EndpointMetricsDto'];
+export type MetricLine = Schemas['MetricLineDto'];
+export type OrgOverview = Schemas['OrgOverviewDto'];

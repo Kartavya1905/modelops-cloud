@@ -1,0 +1,16 @@
+# Prometheus for the local platform (M6). Scrapes the inference gateways' internal /metrics.
+# The API reads it only through allow-listed, server-built queries (docs/06 SEC-15).
+global:
+  scrape_interval: 5s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: gateway
+    metrics_path: /metrics
+    static_configs:
+      # The dev stack's gateway.
+      - targets: ['gateway:8081']
+        labels: { stack: dev }
+      # The gateway the integration tests start (absent most of the time: shows as down, harmless).
+      - targets: ['modelops-gateway-test:8081']
+        labels: { stack: test }

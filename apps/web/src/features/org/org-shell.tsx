@@ -6,6 +6,7 @@ import {
   CheckIcon,
   ChevronsUpDownIcon,
   FolderKanbanIcon,
+  LayoutDashboardIcon,
   LogOutIcon,
   MenuIcon,
   ScrollTextIcon,
@@ -35,6 +36,7 @@ export function useOrgId(): string {
 }
 
 const NAV = [
+  { href: '', label: 'Overview', icon: LayoutDashboardIcon, permission: 'org:read' },
   { href: 'projects', label: 'Projects', icon: FolderKanbanIcon, permission: 'project:read' },
   { href: 'members', label: 'Members', icon: UsersIcon, permission: 'member:read' },
   { href: 'audit', label: 'Audit log', icon: ScrollTextIcon, permission: 'audit:read' },
@@ -87,8 +89,9 @@ export function OrgShell({ children }: { children: ReactNode }) {
   const sidebar = (
     <nav aria-label="Organization" className="grid gap-1">
       {nav.map((item) => {
-        const href = `/orgs/${orgId}/${item.href}`;
-        const active = pathname.startsWith(href);
+        const href = item.href ? `/orgs/${orgId}/${item.href}` : `/orgs/${orgId}`;
+        // The overview is the org root: exact match only, or every page would highlight it.
+        const active = item.href ? pathname.startsWith(href) : pathname === href;
         return (
           <Link
             key={item.href}

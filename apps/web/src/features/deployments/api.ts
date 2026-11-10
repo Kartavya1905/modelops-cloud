@@ -1,7 +1,7 @@
 'use client';
 
 import type { RevisionState } from '@modelops/api-contract';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, unwrap } from '@/lib/api/client';
 import { qk } from '@/lib/query/keys';
 
@@ -100,6 +100,65 @@ export function useCancelRevision(orgId: string, endpointId: string) {
         queryClient.invalidateQueries({ queryKey: qk.revision(orgId, r.id) }),
       ]);
     },
+  });
+}
+
+/** Dashboard data; refreshed every 10 s (Prometheus scrapes the gateway every 5 s). */
+export function useEndpointMetrics(orgId: string, endpointId: string, range: MetricsRange) {
+  return useQuery({
+    queryKey: qk.endpointMetrics(orgId, endpointId, range),
+    queryFn: () =>
+      unwrap(
+        api.GET('/api/v1/orgs/{orgId}/endpoints/{endpointId}/metrics', {
+          params: { path: { orgId, endpointId }, query: { range } },
+        }),
+      ),
+    refetchInterval: 10_000,
+    placeholderData: keepPreviousData,
+    meta: { silentError: true },
+  });
+}
+export const METRICS_RANGES = ['15m', '1h', '6h', '24h'] as const;
+export type MetricsRange = (typeof METRICS_RANGES)[number];
+
+export function usePlaygroundInfo(orgId: string, endpointId: string, revisionId: string | null) {
+  return useQuery({
+    // keyed by the serving revision: a new deploy brings new features/examples
+    queryKey: [...qk.playground(orgId, endpointId), revisionId],
+    queryFn: () =>
+      unwrap(
+        api.GET('/api/v1/orgs/{orgId}/endpoints/{endpointId}/playground', {
+          params: { path: { orgId, endpointId } },
+        }),
+      ),
+  });
+}
+
+export function usePlaygroundPredict(orgId: string, endpointId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (inputs: Record<string, number>[]) =>
+      unwrap(
+        api.POST('/api/v1/orgs/{orgId}/endpoints/{endpointId}/playground/predict', {
+          params: { path: { orgId, endpointId } },
+          body: { inputs },
+        }),
+      ),
+    meta: { silentError: true },
+    // the dashboard counts playground calls too
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: ['orgs', orgId, 'endpoints', endpointId, 'metrics'],
+      }),
+  });
+}
+
+export function useOverview(orgId: string) {
+  return useQuery({
+    queryKey: qk.overview(orgId),
+    queryFn: () =>
+      unwrap(api.GET('/api/v1/orgs/{orgId}/overview', { params: { path: { orgId } } })),
+    refetchInterval: 30_000,
   });
 }
 

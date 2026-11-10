@@ -73,10 +73,11 @@ export class RateLimiter {
   constructor(
     private readonly counter: Counter,
     private readonly onError: () => void = () => undefined,
+    private readonly now: () => number = Date.now,
   ) {}
 
   async allow(endpointId: string, keyId: string, limitRps: number): Promise<boolean> {
-    const second = Math.floor(Date.now() / 1000);
+    const second = Math.floor(this.now() / 1000);
     try {
       const n = await this.counter.incr(`mo:rl:${endpointId}:${keyId}:${String(second)}`, 2000);
       return n <= limitRps;

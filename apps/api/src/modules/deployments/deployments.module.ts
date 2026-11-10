@@ -8,6 +8,7 @@ import { DeployWorker } from './deploy.worker';
 import { EndpointsController } from './endpoints.controller';
 import { EndpointsService } from './endpoints.service';
 import { OutboxRelay } from './outbox.relay';
+import { PlaygroundController, PlaygroundService } from './playground';
 import { ArtifactUrlSigner, ModelServerProbe } from './probe';
 import { Reconciler } from './reconciler';
 import { DockerDriver } from './runtime/docker.driver';
@@ -18,8 +19,8 @@ import { RUNTIME_DRIVER } from './runtime/runtime-driver';
  * the worker does (ADR-0001: same codebase, separate processes).
  */
 @Module({
-  controllers: [EndpointsController, ApiKeysController],
-  providers: [EndpointsService, ApiKeysService, DataPlanePublisher],
+  controllers: [EndpointsController, ApiKeysController, PlaygroundController],
+  providers: [EndpointsService, ApiKeysService, DataPlanePublisher, PlaygroundService],
   exports: [EndpointsService, DataPlanePublisher],
 })
 export class DeploymentsModule {}

@@ -1,4 +1,4 @@
-// Captures README/demo screenshots (M2-M5) from a running stack, in light and dark mode.
+// Captures README/demo screenshots (M2-M6) from a running stack, in light and dark mode.
 //   pnpm --filter @modelops/e2e screenshots      (writes docs/images/m*.png)
 // Uses a fresh throwaway account each run; nothing here is a real credential.
 import { execFileSync } from 'node:child_process';
@@ -175,6 +175,42 @@ async function main(): Promise<void> {
     await page.getByRole('dialog').getByRole('button', { name: 'Create key' }).click();
     await page.getByText('Copy your API key now').waitFor();
     await shot(page, `m5-api-key${suffix}`);
+
+    // ---- M6: real traffic (k6), playground, dashboard, overview -------------------------
+    const key = (await page.getByRole('dialog').locator('code').first().textContent()) ?? '';
+    await page.getByRole('dialog').getByRole('button', { name: 'Done' }).click();
+    execFileSync(
+      process.execPath,
+      [
+        join(import.meta.dirname, '..', '..', 'scripts', 'demo-traffic.mjs'),
+        '--endpoint',
+        'churn-staging',
+        '--key',
+        key,
+        '--rps',
+        '15',
+        '--duration',
+        '40s',
+      ],
+      { stdio: 'pipe' },
+    );
+    await page.getByRole('link', { name: 'Churn staging' }).click();
+    await page
+      .getByRole('form', { name: 'Playground' })
+      .getByRole('button', { name: 'Predict' })
+      .click();
+    await page.getByTestId('playground-label').waitFor();
+    await page.getByRole('button', { name: '15m', exact: true }).click();
+    await page
+      .getByRole('img', { name: /requests per second by model version/ })
+      .waitFor({ timeout: 60_000 });
+    await page.waitForTimeout(11_000); // one more dashboard refresh after the last scrape
+    await noToasts(page);
+    await page.screenshot({ path: join(OUT, `m6-endpoint${suffix}.png`), fullPage: true });
+    console.log(`screenshot: docs/images/m6-endpoint${suffix}.png`);
+    await page.getByRole('link', { name: 'Overview' }).click();
+    await page.getByRole('heading', { name: 'Overview' }).waitFor();
+    await shot(page, `m6-overview${suffix}`);
     await page.close();
   }
   await browser.close();
