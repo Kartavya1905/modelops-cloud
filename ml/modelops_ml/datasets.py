@@ -18,7 +18,9 @@ from dataclasses import asdict, dataclass
 import numpy as np
 import pandas as pd
 
-GENERATOR_VERSION = "churn-v1"
+# v2 (M7): a stronger concept-drift knob. concept_shift=0 data is byte-identical to v1 (the
+# pinned-hash test proves it); only concept-shifted data changed.
+GENERATOR_VERSION = "churn-v2"
 LABEL = "churned"
 
 # Order matters: it is the column order of the model's input tensor (see signature.json).
@@ -39,7 +41,8 @@ class ChurnParams:
     # data drift knobs
     charge_shift: float = 0.0
     usage_scale: float = 1.0
-    # concept drift knob: 0 = support tickets increase churn, 1 = they *decrease* it
+    # concept drift knob: at 1 the label's relationship to tickets, late payments, contract type and
+    # tenure is reversed, while the inputs keep exactly the same distribution
     concept_shift: float = 0.0
 
     def __post_init__(self) -> None:
@@ -73,14 +76,18 @@ def generate(params: ChurnParams = DEFAULT_PARAMS) -> pd.DataFrame:
     late = rng.poisson(0.3 + 0.7 * (contract == 0))
     usage = np.clip(rng.normal(42.0 - 0.08 * (monthly - 70.0), 12.0) * params.usage_scale, 0, 250)
 
-    ticket_effect = 0.45 * (1.0 - params.concept_shift) - 0.35 * params.concept_shift
+    k = params.concept_shift
+    ticket_effect = 0.45 * (1.0 - k) - 0.35 * k
+    late_effect = 0.55 * (1.0 - k) - 0.55 * k
+    contract_effect = -0.8 * (1.0 - k) + 0.6 * k
+    tenure_effect = -0.05 * (1.0 - k) + 0.02 * k
     logit = (
         -0.9
-        - 0.05 * tenure
+        + tenure_effect * tenure
         + 0.03 * (monthly - 70.0)
         + ticket_effect * tickets
-        - 0.8 * contract
-        + 0.55 * late
+        + contract_effect * contract
+        + late_effect * late
         - 0.025 * (usage - 40.0)
     )
     probability = 1.0 / (1.0 + np.exp(-logit))
@@ -121,3 +128,54 @@ def features_and_label(df: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
     x = df.loc[:, list(FEATURES)].to_numpy(dtype=np.float32)
     y = df[LABEL].to_numpy(dtype=np.int64)
     return x, y
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Exports one dataset version, e.g. a held-out evaluation set or a drifted sample (M7).
+
+    uv run --directory ml python -m modelops_ml.datasets --seed 11 --rows 4000 --out holdout.csv
+    ... --charge-shift 25 --usage-scale 1.5     data drift (inputs move)
+    ... --concept-shift 1                       concept drift (the label relationship changes)
+    ... --format jsonl                          one {"features": {...}, "label": n} per line
+    """
+    import argparse
+    import json
+    import sys
+
+    parser = argparse.ArgumentParser(description="Export a seeded churn dataset version.")
+    parser.add_argument("--rows", type=int, default=DEFAULT_PARAMS.n_rows)
+    parser.add_argument("--seed", type=int, default=DEFAULT_PARAMS.seed)
+    parser.add_argument("--charge-shift", type=float, default=0.0)
+    parser.add_argument("--usage-scale", type=float, default=1.0)
+    parser.add_argument("--concept-shift", type=float, default=0.0)
+    parser.add_argument("--format", choices=["csv", "jsonl"], default="csv")
+    parser.add_argument("--out", help="file to write (default: stdout)")
+    args = parser.parse_args(argv)
+
+    params = ChurnParams(
+        n_rows=args.rows,
+        seed=args.seed,
+        charge_shift=args.charge_shift,
+        usage_scale=args.usage_scale,
+        concept_shift=args.concept_shift,
+    )
+    df = generate(params)
+    if args.format == "csv":
+        data = to_canonical_csv(df)
+    else:
+        lines = [
+            json.dumps({"features": {f: row[f] for f in FEATURES}, "label": int(row[LABEL])})
+            for row in df.to_dict(orient="records")
+        ]
+        data = ("\n".join(lines) + "\n").encode("utf-8")
+    if args.out:
+        with open(args.out, "wb") as fh:
+            fh.write(data)
+        print(f"{params.version_label} sha256={sha256_of(df)} rows={len(df)}", file=sys.stderr)
+    else:
+        sys.stdout.buffer.write(data)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

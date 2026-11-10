@@ -10,6 +10,8 @@ import { PrismaService } from '../../src/common/prisma/prisma.service';
 import { APP_CONFIG, type AppConfig, loadConfig } from '../../src/config/config';
 import type { Role } from '../../src/generated/prisma/client';
 import { DeployWorker } from '../../src/modules/deployments/deploy.worker';
+import { EventsWorker } from '../../src/modules/monitoring/events.consumer';
+import { DriftScheduler } from '../../src/modules/monitoring/monitoring.module';
 import { ValidationWorker } from '../../src/modules/validation/validation.worker';
 import { setupApp } from '../../src/setup-app';
 import { WorkerModule } from '../../src/worker.module';
@@ -147,6 +149,10 @@ export async function createTestWorker(env: Record<string, string> = {}): Promis
     .overrideProvider(DeployWorker)
     .useValue({})
     .overrideProvider(ValidationWorker)
+    .useValue({})
+    .overrideProvider(EventsWorker)
+    .useValue({})
+    .overrideProvider(DriftScheduler)
     .useValue({})
     .compile();
   await worker.init();

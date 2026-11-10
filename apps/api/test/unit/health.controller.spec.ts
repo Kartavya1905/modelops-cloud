@@ -42,6 +42,13 @@ async function bootWith(checks: DependencyCheck[]): Promise<INestApplication> {
     validation: { sweepMs: 1000, leaseMs: 1000, maxAttempts: 1 },
     apiKeyPepper: 'p'.repeat(32),
     prometheusUrl: 'http://127.0.0.1:4',
+    monitoring: {
+      captureBucket: 'drift-captures',
+      driftIntervalMs: 60_000,
+      driftWindowHours: 24,
+      driftMinSamples: 100,
+      retentionDays: 7,
+    },
     deploy: {
       dockerProxyUrl: 'http://127.0.0.1:1',
       modelServerImage: 'img',

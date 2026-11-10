@@ -55,6 +55,13 @@ export class ModelDto {
   @ApiProperty({ enum: ['BINARY_CLASSIFICATION'] }) taskType!: 'BINARY_CLASSIFICATION';
   @ApiProperty({ description: 'Name in the MLflow Model Registry' }) mlflowName!: string;
   @ApiProperty() versionCount!: number;
+  @ApiProperty({
+    type: String,
+    format: 'uuid',
+    nullable: true,
+    description: 'The `champion` version (set only with a passed evaluation)',
+  })
+  championVersionId!: string | null;
   @ApiProperty({ type: ModelVersionSummaryDto, nullable: true })
   latestVersion!: ModelVersionSummaryDto | null;
   @ApiProperty({ format: 'date-time' }) createdAt!: string;
@@ -80,6 +87,9 @@ export class DatasetVersionDto {
   @ApiProperty() uri!: string;
   @ApiProperty({ type: 'object', additionalProperties: { type: 'string' } })
   generatorParams!: Record<string, string>;
+  @ApiProperty({ description: 'The CSV is in content-addressed storage (drift, evaluation)' })
+  stored!: boolean;
+  @ApiProperty({ type: [String] }) columns!: string[];
   @ApiProperty({ format: 'date-time' }) createdAt!: string;
 }
 

@@ -1259,6 +1259,77 @@
         "tags": [
           "registry"
         ]
+      },
+      "post": {
+        "operationId": "Datasets_upload",
+        "parameters": [
+          {
+            "name": "orgId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "projectId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file",
+                  "name",
+                  "version"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "CSV with a header row (max 100 MB)"
+                  },
+                  "name": {
+                    "type": "string",
+                    "example": "churn-holdout"
+                  },
+                  "version": {
+                    "type": "string",
+                    "example": "seed11-n4000"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Stored content-addressed; the same bytes always give the same dataset version",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatasetVersionDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "registry"
+        ]
       }
     },
     "/api/v1/orgs/{orgId}/models/{modelId}": {
@@ -1412,6 +1483,11 @@
                     "type": "string",
                     "format": "binary",
                     "description": "golden_examples.json (max 1 MB)"
+                  },
+                  "trainingDatasetVersionId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Optional: the dataset version it was trained on (enables drift monitoring)"
                   }
                 }
               }
@@ -1601,6 +1677,66 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EndpointDetailDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "deployments"
+        ]
+      },
+      "patch": {
+        "operationId": "Endpoints_update",
+        "parameters": [
+          {
+            "name": "orgId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "endpointId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "description": "ETag from GET (W/\"<rowVersion>\")",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateEndpointDto"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "",
@@ -2098,6 +2234,351 @@
           "metrics"
         ]
       }
+    },
+    "/api/v1/orgs/{orgId}/endpoints/{endpointId}/drift-reports": {
+      "get": {
+        "operationId": "Monitoring_list",
+        "parameters": [
+          {
+            "name": "orgId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "endpointId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Newest first (up to 30)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DriftReportDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "monitoring"
+        ]
+      },
+      "post": {
+        "operationId": "Monitoring_run",
+        "parameters": [
+          {
+            "name": "orgId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "endpointId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunDriftDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Evidently data drift, run now",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriftReportDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "monitoring"
+        ]
+      }
+    },
+    "/api/v1/orgs/{orgId}/endpoints/{endpointId}/performance": {
+      "get": {
+        "operationId": "Monitoring_performance",
+        "parameters": [
+          {
+            "name": "orgId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "endpointId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "range",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "24h",
+                "7d"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PerformanceDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "monitoring"
+        ]
+      }
+    },
+    "/api/v1/orgs/{orgId}/models/{modelId}/evaluations": {
+      "post": {
+        "operationId": "Evaluation_run",
+        "parameters": [
+          {
+            "name": "orgId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "modelId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunEvaluationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Scored and judged by the project policy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "evaluation"
+        ]
+      },
+      "get": {
+        "operationId": "Evaluation_list",
+        "parameters": [
+          {
+            "name": "orgId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "modelId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/EvaluationDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "evaluation"
+        ]
+      }
+    },
+    "/api/v1/orgs/{orgId}/evaluations/{evaluationId}": {
+      "get": {
+        "operationId": "Evaluation_get",
+        "parameters": [
+          {
+            "name": "orgId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "evaluationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "evaluation"
+        ]
+      }
+    },
+    "/api/v1/orgs/{orgId}/models/{modelId}/champion": {
+      "post": {
+        "operationId": "Evaluation_setChampion",
+        "parameters": [
+          {
+            "name": "orgId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "modelId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetChampionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The evaluation that crowned the new champion",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "evaluation"
+        ]
+      }
     }
   },
   "info": {
@@ -2310,7 +2791,13 @@
                 "deployment:create",
                 "deployment:cancel",
                 "apikey:read",
-                "apikey:manage"
+                "apikey:manage",
+                "monitoring:read",
+                "monitoring:run",
+                "endpoint:update",
+                "dataset:create",
+                "evaluation:run",
+                "model:promote"
               ]
             }
           }
@@ -3254,6 +3741,12 @@
           "versionCount": {
             "type": "number"
           },
+          "championVersionId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "The `champion` version (set only with a passed evaluation)"
+          },
           "latestVersion": {
             "nullable": true,
             "type": "object",
@@ -3277,6 +3770,7 @@
           "taskType",
           "mlflowName",
           "versionCount",
+          "championVersionId",
           "latestVersion",
           "createdAt"
         ]
@@ -3328,6 +3822,16 @@
               "type": "string"
             }
           },
+          "stored": {
+            "type": "boolean",
+            "description": "The CSV is in content-addressed storage (drift, evaluation)"
+          },
+          "columns": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time"
@@ -3341,6 +3845,8 @@
           "rowCount",
           "uri",
           "generatorParams",
+          "stored",
+          "columns",
           "createdAt"
         ]
       },
@@ -3398,6 +3904,12 @@
           "versionCount": {
             "type": "number"
           },
+          "championVersionId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "The `champion` version (set only with a passed evaluation)"
+          },
           "latestVersion": {
             "nullable": true,
             "type": "object",
@@ -3430,6 +3942,7 @@
           "taskType",
           "mlflowName",
           "versionCount",
+          "championVersionId",
           "latestVersion",
           "createdAt",
           "project",
@@ -3816,6 +4329,14 @@
           "rateLimitRps": {
             "type": "number"
           },
+          "captureInputs": {
+            "type": "boolean",
+            "description": "Inputs are recorded for drift detection (opt-in)"
+          },
+          "rowVersion": {
+            "type": "number",
+            "description": "Optimistic-lock version; also sent as the ETag header"
+          },
           "invokeUrl": {
             "type": "string",
             "description": "POST here with an API key of this project"
@@ -3851,6 +4372,8 @@
           "description",
           "environment",
           "rateLimitRps",
+          "captureInputs",
+          "rowVersion",
           "invokeUrl",
           "stableRevision",
           "inProgressRevision",
@@ -3925,6 +4448,14 @@
           "rateLimitRps": {
             "type": "number"
           },
+          "captureInputs": {
+            "type": "boolean",
+            "description": "Inputs are recorded for drift detection (opt-in)"
+          },
+          "rowVersion": {
+            "type": "number",
+            "description": "Optimistic-lock version; also sent as the ETag header"
+          },
           "invokeUrl": {
             "type": "string",
             "description": "POST here with an API key of this project"
@@ -3970,6 +4501,8 @@
           "description",
           "environment",
           "rateLimitRps",
+          "captureInputs",
+          "rowVersion",
           "invokeUrl",
           "stableRevision",
           "inProgressRevision",
@@ -3977,6 +4510,20 @@
           "project",
           "revisions"
         ]
+      },
+      "UpdateEndpointDto": {
+        "type": "object",
+        "properties": {
+          "captureInputs": {
+            "type": "boolean",
+            "description": "Record request inputs (7 days) for drift detection. Off by default (privacy)."
+          },
+          "rateLimitRps": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 1000
+          }
+        }
       },
       "ResourcesDto": {
         "type": "object",
@@ -4716,6 +5263,419 @@
           "deployments7d",
           "requests24h",
           "recentDeployments"
+        ]
+      },
+      "FeatureScoreDto": {
+        "type": "object",
+        "properties": {
+          "feature": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "numerical",
+              "categorical"
+            ]
+          },
+          "method": {
+            "type": "string",
+            "example": "Wasserstein distance (normed)"
+          },
+          "threshold": {
+            "type": "number"
+          },
+          "score": {
+            "type": "number"
+          },
+          "drifted": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "feature",
+          "kind",
+          "method",
+          "threshold",
+          "score",
+          "drifted"
+        ]
+      },
+      "DriftReportDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "endpointId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "modelVersionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "referenceDatasetVersionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "windowStart": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "windowEnd": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "sampleCount": {
+            "type": "number"
+          },
+          "datasetDrift": {
+            "type": "boolean",
+            "description": "At least half the features drifted"
+          },
+          "driftShare": {
+            "type": "number"
+          },
+          "features": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FeatureScoreDto"
+            }
+          },
+          "evidentlyVersion": {
+            "type": "string"
+          },
+          "trigger": {
+            "type": "string",
+            "enum": [
+              "manual",
+              "scheduled"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "endpointId",
+          "modelVersionId",
+          "referenceDatasetVersionId",
+          "windowStart",
+          "windowEnd",
+          "sampleCount",
+          "datasetDrift",
+          "driftShare",
+          "features",
+          "evidentlyVersion",
+          "trigger",
+          "createdAt"
+        ]
+      },
+      "RunDriftDto": {
+        "type": "object",
+        "properties": {
+          "windowHours": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 168,
+            "description": "Window to analyse; default 24"
+          }
+        }
+      },
+      "PerformancePointDto": {
+        "type": "object",
+        "properties": {
+          "labelled": {
+            "type": "number"
+          },
+          "accuracy": {
+            "type": "number",
+            "nullable": true
+          },
+          "f1": {
+            "type": "number",
+            "nullable": true
+          },
+          "rocAuc": {
+            "type": "number",
+            "nullable": true
+          }
+        },
+        "required": [
+          "labelled",
+          "accuracy",
+          "f1",
+          "rocAuc"
+        ]
+      },
+      "PerformanceBucketDto": {
+        "type": "object",
+        "properties": {
+          "labelled": {
+            "type": "number"
+          },
+          "accuracy": {
+            "type": "number",
+            "nullable": true
+          },
+          "f1": {
+            "type": "number",
+            "nullable": true
+          },
+          "rocAuc": {
+            "type": "number",
+            "nullable": true
+          },
+          "start": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "labelled",
+          "accuracy",
+          "f1",
+          "rocAuc",
+          "start"
+        ]
+      },
+      "PerformanceDto": {
+        "type": "object",
+        "properties": {
+          "range": {
+            "type": "string",
+            "enum": [
+              "24h",
+              "7d"
+            ]
+          },
+          "positiveClass": {
+            "type": "string"
+          },
+          "predictions": {
+            "type": "number",
+            "description": "Predictions recorded in the range (labelled or not)"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/PerformancePointDto"
+          },
+          "buckets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PerformanceBucketDto"
+            }
+          }
+        },
+        "required": [
+          "range",
+          "positiveClass",
+          "predictions",
+          "summary",
+          "buckets"
+        ]
+      },
+      "RunEvaluationDto": {
+        "type": "object",
+        "properties": {
+          "candidateVersionId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "A VALIDATED version of this model"
+          },
+          "datasetVersionId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "A stored, labelled dataset version of the project"
+          },
+          "labelColumn": {
+            "type": "string",
+            "description": "Label column in the dataset (default: churned)"
+          }
+        },
+        "required": [
+          "candidateVersionId",
+          "datasetVersionId"
+        ]
+      },
+      "VersionRefDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "version": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "version"
+        ]
+      },
+      "ScoreDto": {
+        "type": "object",
+        "properties": {
+          "rows": {
+            "type": "number"
+          },
+          "accuracy": {
+            "type": "number"
+          },
+          "f1": {
+            "type": "number"
+          },
+          "rocAuc": {
+            "type": "number"
+          },
+          "logLoss": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "rows",
+          "accuracy",
+          "f1",
+          "rocAuc",
+          "logLoss"
+        ]
+      },
+      "EvalMetricsDto": {
+        "type": "object",
+        "properties": {
+          "candidate": {
+            "$ref": "#/components/schemas/ScoreDto"
+          },
+          "baseline": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ScoreDto"
+              }
+            ]
+          }
+        }
+      },
+      "GateCheckDto": {
+        "type": "object",
+        "properties": {
+          "rule": {
+            "type": "string"
+          },
+          "passed": {
+            "type": "boolean"
+          },
+          "detail": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "rule",
+          "passed",
+          "detail"
+        ]
+      },
+      "EvaluationDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "modelId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "candidate": {
+            "$ref": "#/components/schemas/VersionRefDto"
+          },
+          "baseline": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/VersionRefDto"
+              }
+            ]
+          },
+          "datasetVersionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "datasetLabel": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "COMPLETED",
+              "FAILED"
+            ]
+          },
+          "passed": {
+            "type": "boolean"
+          },
+          "metrics": {
+            "$ref": "#/components/schemas/EvalMetricsDto"
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GateCheckDto"
+            }
+          },
+          "policy": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number"
+            }
+          },
+          "failureDetail": {
+            "type": "string",
+            "nullable": true
+          },
+          "canPromote": {
+            "type": "boolean",
+            "description": "This evaluation can crown the candidate right now"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "modelId",
+          "candidate",
+          "baseline",
+          "datasetVersionId",
+          "datasetLabel",
+          "status",
+          "passed",
+          "metrics",
+          "checks",
+          "policy",
+          "failureDetail",
+          "canPromote",
+          "createdAt"
+        ]
+      },
+      "SetChampionDto": {
+        "type": "object",
+        "properties": {
+          "evaluationId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "A PASSED evaluation run against the current champion"
+          }
+        },
+        "required": [
+          "evaluationId"
         ]
       }
     }

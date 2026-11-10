@@ -95,6 +95,8 @@ export interface BundleFiles {
   model: File;
   signature: File;
   golden: File;
+  /** M7: the dataset version it was trained on (drift reference) */
+  trainingDatasetVersionId?: string;
 }
 
 /** Uploads a bundle (multipart) as the next version of a model. */
@@ -114,6 +116,9 @@ export function useUploadVersion(orgId: string) {
       form.set('model', files.model);
       form.set('signature', files.signature);
       form.set('golden', files.golden);
+      if (files.trainingDatasetVersionId) {
+        form.set('trainingDatasetVersionId', files.trainingDatasetVersionId);
+      }
       return unwrap(
         api.POST('/api/v1/orgs/{orgId}/models/{modelId}/versions/upload', {
           params: { path: { orgId, modelId } },

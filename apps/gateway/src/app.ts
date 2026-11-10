@@ -3,6 +3,13 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest }
 import { Counter as PromCounter, Histogram, Registry, collectDefaultMetrics } from 'prom-client';
 import type { GatewayConfig } from './config.js';
 import type { RoutedEndpoint, RoutedRevision } from './contract.js';
+import {
+  type EventSink,
+  feedbackEvents,
+  parseFeedback,
+  predictionEvents,
+  type StreamEvent,
+} from './events.js';
 import { CircuitBreaker, type FieldError, RateLimiter, toMatrix } from './guards.js';
 import type { KeyVerifier } from './keys.js';
 import type { RoutingTable } from './routing.js';
@@ -17,6 +24,8 @@ export interface Deps {
   fetchFn?: typeof fetch;
   /** Health of the Redis connection, for /readyz. */
   redisReady?: () => boolean;
+  /** M7: prediction/feedback event stream (absent in some unit tests) */
+  events?: EventSink;
 }
 
 const REQUEST_ID = /^[A-Za-z0-9._-]{8,128}$/;
@@ -59,6 +68,7 @@ export function createMetrics(): {
   duration: Histogram<RequestLabel>;
   upstream: Histogram<'revision'>;
   rateLimitFailOpen: PromCounter;
+  eventsDropped: PromCounter;
 } {
   const registry = new Registry();
   collectDefaultMetrics({ register: registry, prefix: 'gateway_' });
@@ -87,6 +97,11 @@ export function createMetrics(): {
     rateLimitFailOpen: new PromCounter({
       name: 'gateway_rate_limit_fail_open_total',
       help: 'Requests allowed because the rate limiter could not reach Redis',
+      registers: [registry],
+    }),
+    eventsDropped: new PromCounter({
+      name: 'gateway_events_dropped_total',
+      help: 'Prediction/feedback events that could not be written to the stream',
       registers: [registry],
     }),
   };
@@ -149,6 +164,7 @@ export function createPredictor(deps: Deps, metrics: Metrics) {
   const { config, limiter } = deps;
   const breaker = deps.breaker ?? new CircuitBreaker();
   const fetchFn = deps.fetchFn ?? fetch;
+  const record = eventRecorder(deps, metrics);
 
   return async function predict(
     req: FastifyRequest,
@@ -253,8 +269,13 @@ export function createPredictor(deps: Deps, metrics: Metrics) {
     breaker.success(rev.id);
     const body = (await res.json()) as { outputs: Record<string, unknown[]> };
     const outputs = toOutputs(rev, body.outputs);
+    const ids = outputs.map(() => randomUUID());
     const latencyMs = Math.round((performance.now() - opts.started) * 100) / 100;
     done(200);
+    // Client traffic only: playground calls are not production predictions (no drift, no feedback).
+    if (opts.source === 'api') {
+      record(predictionEvents(endpoint, rev, ids, outputs, parsed.rows, Date.now()));
+    }
     req.log.info(
       {
         endpoint: endpoint.slug,
@@ -267,12 +288,20 @@ export function createPredictor(deps: Deps, metrics: Metrics) {
     );
     reply.header('X-Model-Version', String(rev.modelVersion)).header('X-Revision-Id', rev.id);
     return {
-      predictionIds: outputs.map(() => randomUUID()),
+      predictionIds: ids,
       model: { name: rev.modelName, version: rev.modelVersion, framework: rev.framework },
       revisionId: rev.id,
       outputs,
       latencyMs,
     };
+  };
+}
+
+/** Fire-and-forget: never awaited on the request path; failures are counted, not thrown. */
+function eventRecorder(deps: Deps, metrics: Metrics) {
+  return (events: StreamEvent[]) => {
+    if (!deps.events || events.length === 0) return;
+    deps.events.publish(events).catch(() => metrics.eventsDropped.inc(events.length));
   };
 }
 
@@ -307,6 +336,51 @@ export function buildPublicApp(deps: Deps, metrics = createMetrics()): FastifyIn
         source: 'api',
         started,
       });
+    },
+  );
+  /**
+   * Ground truth for earlier predictions (FR-26). Accepted asynchronously (202): labels for
+   * unknown or expired prediction ids are counted and ignored by the worker.
+   */
+  app.post<{ Params: PredictParams }>(
+    '/v1/endpoints/:slug/feedback',
+    async (req: FastifyRequest<{ Params: PredictParams }>, reply) => {
+      const key = await keys.verify(req.headers.authorization);
+      if (!key || !key.scopes.includes('feedback')) {
+        return problem(
+          reply,
+          401,
+          'INVALID_API_KEY',
+          'Invalid API key',
+          'Send `Authorization: Bearer mo_…` with a key that has the feedback scope.',
+        );
+      }
+      const { slug } = req.params;
+      const endpoint = SLUG.test(slug) ? routing.lookup(key.projectId, slug) : undefined;
+      if (!endpoint) return problem(reply, 404, 'ENDPOINT_NOT_FOUND', 'Endpoint not found');
+      const classes = endpoint.revision?.classes ?? [0, 1];
+      const parsed = parseFeedback(req.body, classes);
+      if ('errors' in parsed) {
+        return problem(
+          reply,
+          400,
+          'VALIDATION_FAILED',
+          'Invalid feedback',
+          undefined,
+          parsed.errors,
+        );
+      }
+      if (!deps.events) {
+        return problem(reply, 503, 'DEPENDENCY_UNAVAILABLE', 'Feedback is not available');
+      }
+      try {
+        // Awaited here (unlike predictions): the client should know if its labels were not taken.
+        await deps.events.publish(feedbackEvents(endpoint, parsed.items, Date.now()));
+      } catch {
+        metrics.eventsDropped.inc(parsed.items.length);
+        return problem(reply, 503, 'DEPENDENCY_UNAVAILABLE', 'Feedback could not be recorded');
+      }
+      return reply.code(202).send({ accepted: parsed.items.length });
     },
   );
   return app;

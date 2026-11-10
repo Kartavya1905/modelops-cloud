@@ -29,7 +29,7 @@ function makeKey(projectId = PROJECT, overrides: Partial<ApiKeyEntry> = {}) {
     orgId: 'org-1',
     projectId,
     hash: createHmac('sha256', PEPPER).update(secret).digest('hex'),
-    scopes: ['predict'],
+    scopes: ['predict', 'feedback'],
     expiresAt: null,
     revoked: false,
     ...overrides,
@@ -37,7 +37,7 @@ function makeKey(projectId = PROJECT, overrides: Partial<ApiKeyEntry> = {}) {
   return { prefix, token: `mo_${prefix}_${secret}`, entry };
 }
 
-const snapshot = (revision: boolean, rateLimitRps = 3): RoutingSnapshot => ({
+const snapshot = (revision: boolean, rateLimitRps = 3, captureInputs = false): RoutingSnapshot => ({
   hash: revision ? 'h1' : 'h0',
   generatedAt: new Date().toISOString(),
   endpoints: {
@@ -47,6 +47,7 @@ const snapshot = (revision: boolean, rateLimitRps = 3): RoutingSnapshot => ({
       projectId: PROJECT,
       slug: 'churn',
       rateLimitRps,
+      captureInputs,
       revision: revision
         ? {
             id: REV,
@@ -64,7 +65,13 @@ const snapshot = (revision: boolean, rateLimitRps = 3): RoutingSnapshot => ({
 });
 
 async function setup(
-  opts: { revision?: boolean; upstream?: typeof fetch; rateLimitRps?: number } = {},
+  opts: {
+    revision?: boolean;
+    upstream?: typeof fetch;
+    rateLimitRps?: number;
+    capture?: boolean;
+    sinkFails?: boolean;
+  } = {},
 ) {
   const store = new Map<string, ApiKeyEntry>();
   const keys = new KeyVerifier(
@@ -73,7 +80,7 @@ async function setup(
     30_000,
   );
   const routing = new RoutingTable({
-    load: () => Promise.resolve(snapshot(opts.revision ?? true, opts.rateLimitRps)),
+    load: () => Promise.resolve(snapshot(opts.revision ?? true, opts.rateLimitRps, opts.capture)),
   });
   await routing.refresh();
   const counts = new Map<string, number>();
@@ -108,9 +115,25 @@ async function setup(
       );
       return Promise.resolve(res);
     });
-  const deps = { config, routing, keys, limiter, fetchFn: upstream as unknown as typeof fetch };
+  const events: Record<string, string>[] = [];
+  const sink = {
+    publish: (batch: Record<string, string>[]) => {
+      if (opts.sinkFails) return Promise.reject(new Error('redis down'));
+      events.push(...batch);
+      return Promise.resolve();
+    },
+  };
+  const deps = {
+    config,
+    routing,
+    keys,
+    limiter,
+    fetchFn: upstream as unknown as typeof fetch,
+    events: sink,
+  };
   const metrics = createMetrics();
   return {
+    events,
     app: buildPublicApp(deps, metrics),
     admin: buildAdminApp(deps, metrics),
     store,
@@ -390,5 +413,120 @@ describe('toMatrix', () => {
       'inputs[0].b',
       'inputs[0].c',
     ]);
+  });
+});
+
+describe('M7 events and feedback', () => {
+  const send = (
+    app: Awaited<ReturnType<typeof setup>>['app'],
+    token: string,
+    url: string,
+    payload: object,
+  ) => app.inject({ method: 'POST', url, headers: { authorization: `Bearer ${token}` }, payload });
+
+  it('records one prediction event per row; inputs only when capture is on', async () => {
+    const off = await setup({ rateLimitRps: 100 });
+    const k = makeKey();
+    off.store.set(k.prefix, k.entry);
+    const res = await send(off.app, k.token, '/v1/endpoints/churn/predict', { inputs: [row, row] });
+    const ids = res.json<{ predictionIds: string[] }>().predictionIds;
+    await new Promise((r) => setImmediate(r));
+    expect(off.events.map((e) => e.id)).toEqual(ids);
+    expect(off.events[0]).toMatchObject({
+      type: 'prediction',
+      endpoint: 'ep-1',
+      org: 'org-1',
+      revision: REV,
+      modelVersion: 'mv-1',
+      label: '1',
+      score: '0.75',
+    });
+    expect(off.events[0]).not.toHaveProperty('inputs');
+
+    const on = await setup({ rateLimitRps: 100, capture: true });
+    on.store.set(k.prefix, k.entry);
+    await send(on.app, k.token, '/v1/endpoints/churn/predict', { inputs: [{ c: 3, b: 2, a: 1 }] });
+    await new Promise((r) => setImmediate(r));
+    expect(JSON.parse(on.events[0]?.inputs ?? '')).toEqual([1, 2, 3]); // signature order
+  });
+
+  it('a failing stream never fails the prediction (counted instead)', async () => {
+    const s = await setup({ rateLimitRps: 100, sinkFails: true });
+    const k = makeKey();
+    s.store.set(k.prefix, k.entry);
+    const res = await send(s.app, k.token, '/v1/endpoints/churn/predict', { inputs: [row] });
+    expect(res.statusCode).toBe(200);
+    await new Promise((r) => setImmediate(r));
+    expect((await s.admin.inject({ url: '/metrics' })).body).toContain(
+      'gateway_events_dropped_total 1',
+    );
+  });
+
+  it('playground calls are not production predictions', async () => {
+    const s = await setup({ rateLimitRps: 100 });
+    await s.admin.inject({
+      method: 'POST',
+      url: '/internal/endpoints/ep-1/predict',
+      headers: {
+        'x-modelops-token': TOKEN,
+        'x-playground-actor': '99999999-8888-7777-6666-555555555555',
+      },
+      payload: { inputs: [row] },
+    });
+    await new Promise((r) => setImmediate(r));
+    expect(s.events).toEqual([]);
+  });
+
+  it('feedback: 202 with events; labels must be classes; scope and project are enforced', async () => {
+    const s = await setup({ rateLimitRps: 100 });
+    const k = makeKey();
+    s.store.set(k.prefix, k.entry);
+    const id = '0b9f6c1e-5d2a-4f7b-9c3d-2e1f0a9b8c7d';
+    const ok = await send(s.app, k.token, '/v1/endpoints/churn/feedback', {
+      items: [{ predictionId: id, label: 1 }],
+    });
+    expect(ok.statusCode).toBe(202);
+    expect(ok.json()).toEqual({ accepted: 1 });
+    expect(s.events).toEqual([
+      expect.objectContaining({ type: 'feedback', id, endpoint: 'ep-1', label: '1' }),
+    ]);
+
+    for (const bad of [
+      { items: [] },
+      { items: [{ predictionId: 'nope', label: 1 }] },
+      { items: [{ predictionId: id, label: 7 }] },
+    ]) {
+      expect((await send(s.app, k.token, '/v1/endpoints/churn/feedback', bad)).statusCode).toBe(
+        400,
+      );
+    }
+    const predictOnly = makeKey(PROJECT, { scopes: ['predict'] });
+    s.store.set(predictOnly.prefix, predictOnly.entry);
+    expect(
+      (
+        await send(s.app, predictOnly.token, '/v1/endpoints/churn/feedback', {
+          items: [{ predictionId: id, label: 1 }],
+        })
+      ).statusCode,
+    ).toBe(401);
+    const other = makeKey('project-2');
+    s.store.set(other.prefix, other.entry);
+    expect(
+      (
+        await send(s.app, other.token, '/v1/endpoints/churn/feedback', {
+          items: [{ predictionId: id, label: 1 }],
+        })
+      ).statusCode,
+    ).toBe(404);
+
+    const down = await setup({ sinkFails: true });
+    down.store.set(k.prefix, k.entry);
+    expect(
+      (
+        await send(down.app, k.token, '/v1/endpoints/churn/feedback', {
+          items: [{ predictionId: id, label: 0 }],
+        })
+      ).statusCode,
+    ).toBe(503);
   });
 });

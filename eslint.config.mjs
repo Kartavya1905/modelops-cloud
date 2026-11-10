@@ -16,6 +16,8 @@ export default tseslint.config(
       '**/generated/**',
       '**/.venv/**',
       'packages/api-contract/src/schema.d.ts',
+      '**/playwright-report/**', // generated HTML report (gitignored)
+      '**/test-results/**',
     ],
   },
   js.configs.recommended,

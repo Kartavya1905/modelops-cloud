@@ -5,7 +5,9 @@ import {
   Headers,
   HttpCode,
   Param,
+  Patch,
   Post,
+  Req,
   Res,
   UseGuards,
 } from '@nestjs/common';
@@ -17,7 +19,7 @@ import {
   ApiOkResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import { OrgAccessGuard, RequirePermission } from '../../common/authz/org-access.guard';
 import {
   Actor,
@@ -32,10 +34,24 @@ import {
   EndpointDetailDto,
   EndpointDto,
   RevisionDto,
+  UpdateEndpointDto,
 } from './deployments.dto';
 import { EndpointsService } from './endpoints.service';
 
 const OrgId = () => Param('orgId', new UuidParam('Organization'));
+
+/**
+ * The ETag versions the endpoint's *settings* (rowVersion) for `If-Match` on PATCH. It does not
+ * cover the revisions embedded in the same body, so the response must never be revalidated with
+ * `If-None-Match`: Express would answer 304 and a browser would keep showing the endpoint as it
+ * was before a deploy. `no-store` keeps browsers from caching it at all; dropping the request's
+ * `If-None-Match` keeps Express's freshness check from 304-ing other clients.
+ */
+function settingsEtag(req: Request, res: Response, rowVersion: number): void {
+  delete req.headers['if-none-match'];
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('ETag', `W/"${String(rowVersion)}"`);
+}
 
 @ApiTags('deployments')
 @ApiCookieAuth('session')
@@ -66,8 +82,33 @@ export class EndpointsController {
   @Get('endpoints/:endpointId')
   @RequirePermission('endpoint:read')
   @ApiOkResponse({ type: EndpointDetailDto })
-  get(@OrgId() orgId: string, @Param('endpointId', new UuidParam('Endpoint')) endpointId: string) {
-    return this.endpoints.get(orgId, endpointId);
+  async get(
+    @OrgId() orgId: string,
+    @Param('endpointId', new UuidParam('Endpoint')) endpointId: string,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const e = await this.endpoints.get(orgId, endpointId);
+    settingsEtag(req, res, e.rowVersion);
+    return e;
+  }
+
+  @Patch('endpoints/:endpointId')
+  @RequirePermission('endpoint:update')
+  @ApiHeader({ name: 'If-Match', required: true, description: 'ETag from GET (W/"<rowVersion>")' })
+  @ApiOkResponse({ type: EndpointDetailDto })
+  async update(
+    @OrgId() orgId: string,
+    @Param('endpointId', new UuidParam('Endpoint')) endpointId: string,
+    @Body() dto: UpdateEndpointDto,
+    @Headers('if-match') ifMatch: string | undefined,
+    @Actor() actor: ActorContext,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const e = await this.endpoints.update(orgId, endpointId, dto, ifMatch, actor);
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('ETag', `W/"${String(e.rowVersion)}"`);
+    return e;
   }
 
   @Post('endpoints/:endpointId/revisions')

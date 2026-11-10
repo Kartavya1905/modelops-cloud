@@ -66,7 +66,7 @@ def test_generator_params_record_everything_needed_to_regenerate():
     p = generator_params(SMALL)
     assert p["dataset.seed"] == "11"
     assert p["dataset.n_rows"] == "4000"
-    assert p["dataset.generator"] == "churn-v1"
+    assert p["dataset.generator"] == "churn-v2"
     assert "dataset.numpy" in p
 
 
@@ -84,3 +84,49 @@ def test_invalid_params_are_rejected(bad):
 
 # n_rows=200, seed=1 (recorded on Windows 11; must match on Linux CI)
 KNOWN_SHA = "1bb5bb94d3c09311ef45b7d699479ec5c0dfe985ee0e4cf5016a9cd78c512670"
+
+
+def test_cli_exports_the_exact_dataset_version(tmp_path, capsys) -> None:
+    """M7: the platform stores datasets by SHA-256; the CLI must produce the same bytes."""
+    import json
+
+    from modelops_ml.datasets import ChurnParams, generate, main, sha256_of
+
+    out = tmp_path / "holdout.csv"
+    assert main(["--rows", "300", "--seed", "11", "--out", str(out)]) == 0
+    expected = sha256_of(generate(ChurnParams(n_rows=300, seed=11)))
+    import hashlib
+
+    assert hashlib.sha256(out.read_bytes()).hexdigest() == expected
+    assert f"sha256={expected}" in capsys.readouterr().err
+
+    jsonl = tmp_path / "rows.jsonl"
+    main(
+        [
+            "--rows",
+            "20",
+            "--seed",
+            "11",
+            "--concept-shift",
+            "1",
+            "--format",
+            "jsonl",
+            "--out",
+            str(jsonl),
+        ]
+    )
+    rows = [json.loads(line) for line in jsonl.read_text().splitlines()]
+    assert len(rows) == 20
+    assert set(rows[0]) == {"features", "label"}
+    assert rows[0]["label"] in (0, 1)
+
+
+def test_concept_drift_changes_labels_but_not_inputs() -> None:
+    """M7: concept drift must be invisible to input-drift detection by construction."""
+    from modelops_ml.datasets import FEATURES, LABEL, ChurnParams, generate
+
+    normal = generate(ChurnParams(n_rows=2000, seed=21))
+    concept = generate(ChurnParams(n_rows=2000, seed=21, concept_shift=1.0))
+    assert normal[list(FEATURES)].equals(concept[list(FEATURES)])  # identical inputs
+    flipped = (normal[LABEL] != concept[LABEL]).mean()
+    assert flipped > 0.2  # the relationship to the label really changed

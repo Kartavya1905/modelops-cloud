@@ -209,6 +209,22 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        patch: operations["Endpoints_update"];
+        trace?: never;
+    };
+    "/api/v1/orgs/{orgId}/endpoints/{endpointId}/drift-reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["Monitoring_list"];
+        put?: never;
+        post: operations["Monitoring_run"];
+        delete?: never;
+        options?: never;
+        head?: never;
         patch?: never;
         trace?: never;
     };
@@ -220,6 +236,22 @@ export interface paths {
             cookie?: never;
         };
         get: operations["Metrics_endpointMetrics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orgs/{orgId}/endpoints/{endpointId}/performance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["Monitoring_performance"];
         put?: never;
         post?: never;
         delete?: never;
@@ -270,6 +302,22 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["Endpoints_deploy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orgs/{orgId}/evaluations/{evaluationId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["Evaluation_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -388,6 +436,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/orgs/{orgId}/models/{modelId}/champion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["Evaluation_setChampion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orgs/{orgId}/models/{modelId}/evaluations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["Evaluation_list"];
+        put?: never;
+        post: operations["Evaluation_run"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/orgs/{orgId}/models/{modelId}/versions/import": {
         parameters: {
             query?: never;
@@ -493,7 +573,7 @@ export interface paths {
         };
         get: operations["Registry_datasets"];
         put?: never;
-        post?: never;
+        post: operations["Datasets_upload"];
         delete?: never;
         options?: never;
         head?: never;
@@ -760,6 +840,7 @@ export interface components {
             version: string;
         };
         DatasetVersionDto: {
+            columns: string[];
             /** Format: date-time */
             createdAt: string;
             generatorParams: {
@@ -770,6 +851,8 @@ export interface components {
             name: string;
             rowCount: number | null;
             sha256: string;
+            /** @description The CSV is in content-addressed storage (drift, evaluation) */
+            stored: boolean;
             uri: string;
             version: string;
         };
@@ -791,7 +874,33 @@ export interface components {
             /** @enum {string} */
             toState: "REQUESTED" | "AWAITING_APPROVAL" | "QUEUED" | "PROVISIONING" | "LOADING" | "VERIFYING" | "READY" | "DEGRADED" | "DRAINING" | "RETIRED" | "FAILED" | "CANCELLED";
         };
+        DriftReportDto: {
+            /** Format: date-time */
+            createdAt: string;
+            /** @description At least half the features drifted */
+            datasetDrift: boolean;
+            driftShare: number;
+            /** Format: uuid */
+            endpointId: string;
+            evidentlyVersion: string;
+            features: components["schemas"]["FeatureScoreDto"][];
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            modelVersionId: string;
+            /** Format: uuid */
+            referenceDatasetVersionId: string;
+            sampleCount: number;
+            /** @enum {string} */
+            trigger: "manual" | "scheduled";
+            /** Format: date-time */
+            windowEnd: string;
+            /** Format: date-time */
+            windowStart: string;
+        };
         EndpointDetailDto: {
+            /** @description Inputs are recorded for drift detection (opt-in) */
+            captureInputs: boolean;
             /** Format: date-time */
             createdAt: string;
             description: string | null;
@@ -809,10 +918,14 @@ export interface components {
             rateLimitRps: number;
             /** @description Newest first (up to 50) */
             revisions: components["schemas"]["RevisionSummaryDto"][];
+            /** @description Optimistic-lock version; also sent as the ETag header */
+            rowVersion: number;
             slug: string;
             stableRevision: components["schemas"]["RevisionSummaryDto"] | null;
         };
         EndpointDto: {
+            /** @description Inputs are recorded for drift detection (opt-in) */
+            captureInputs: boolean;
             /** Format: date-time */
             createdAt: string;
             description: string | null;
@@ -827,6 +940,8 @@ export interface components {
             /** Format: uuid */
             projectId: string;
             rateLimitRps: number;
+            /** @description Optimistic-lock version; also sent as the ETag header */
+            rowVersion: number;
             slug: string;
             stableRevision: components["schemas"]["RevisionSummaryDto"] | null;
         };
@@ -847,6 +962,34 @@ export interface components {
             stepSeconds: number;
             summary: components["schemas"]["MetricsSummaryDto"];
         };
+        EvalMetricsDto: {
+            baseline?: components["schemas"]["ScoreDto"] | null;
+            candidate?: components["schemas"]["ScoreDto"];
+        };
+        EvaluationDto: {
+            baseline: components["schemas"]["VersionRefDto"] | null;
+            candidate: components["schemas"]["VersionRefDto"];
+            /** @description This evaluation can crown the candidate right now */
+            canPromote: boolean;
+            checks: components["schemas"]["GateCheckDto"][];
+            /** Format: date-time */
+            createdAt: string;
+            datasetLabel: string;
+            /** Format: uuid */
+            datasetVersionId: string;
+            failureDetail: string | null;
+            /** Format: uuid */
+            id: string;
+            metrics: components["schemas"]["EvalMetricsDto"];
+            /** Format: uuid */
+            modelId: string;
+            passed: boolean;
+            policy: {
+                [key: string]: number;
+            };
+            /** @enum {string} */
+            status: "COMPLETED" | "FAILED";
+        };
         ExperimentDto: {
             /** @description MLflow experiment id */
             experimentId: string;
@@ -854,6 +997,21 @@ export interface components {
             name: string;
             /** @description Commands that train into this experiment */
             trainCommands: string[];
+        };
+        FeatureScoreDto: {
+            drifted: boolean;
+            feature: string;
+            /** @enum {string} */
+            kind: "numerical" | "categorical";
+            /** @example Wasserstein distance (normed) */
+            method: string;
+            score: number;
+            threshold: number;
+        };
+        GateCheckDto: {
+            detail: string;
+            passed: boolean;
+            rule: string;
         };
         ImportVersionDto: {
             /** @description MLflow run id in this project’s experiment */
@@ -899,7 +1057,7 @@ export interface components {
             orgName: string;
             orgSlug: string;
             /** @description For UI hints only. */
-            permissions: ("org:read" | "member:read" | "member:manage" | "invitation:create" | "project:read" | "project:create" | "project:update" | "project:archive" | "audit:read" | "experiment:read" | "model:read" | "model:create" | "model:register" | "endpoint:read" | "endpoint:create" | "deployment:create" | "deployment:cancel" | "apikey:read" | "apikey:manage")[];
+            permissions: ("org:read" | "member:read" | "member:manage" | "invitation:create" | "project:read" | "project:create" | "project:update" | "project:archive" | "audit:read" | "experiment:read" | "model:read" | "model:create" | "model:register" | "endpoint:read" | "endpoint:create" | "deployment:create" | "deployment:cancel" | "apikey:read" | "apikey:manage" | "monitoring:read" | "monitoring:run" | "endpoint:update" | "dataset:create" | "evaluation:run" | "model:promote")[];
             /** @enum {string} */
             role: "OWNER" | "ADMIN" | "ML_ENGINEER" | "VIEWER";
         };
@@ -933,6 +1091,11 @@ export interface components {
             serverErrors: number;
         };
         ModelDetailDto: {
+            /**
+             * Format: uuid
+             * @description The `champion` version (set only with a passed evaluation)
+             */
+            championVersionId: string | null;
             /** Format: date-time */
             createdAt: string;
             description: string | null;
@@ -952,6 +1115,11 @@ export interface components {
             versions: components["schemas"]["ModelVersionSummaryDto"][];
         };
         ModelDto: {
+            /**
+             * Format: uuid
+             * @description The `champion` version (set only with a passed evaluation)
+             */
+            championVersionId: string | null;
             /** Format: date-time */
             createdAt: string;
             description: string | null;
@@ -1057,6 +1225,29 @@ export interface components {
             servingEndpoints: number;
             /** @description Model versions by validation status */
             versions: components["schemas"]["StateCountDto"][];
+        };
+        PerformanceBucketDto: {
+            accuracy: number | null;
+            f1: number | null;
+            labelled: number;
+            rocAuc: number | null;
+            /** Format: date-time */
+            start: string;
+        };
+        PerformanceDto: {
+            buckets: components["schemas"]["PerformanceBucketDto"][];
+            positiveClass: string;
+            /** @description Predictions recorded in the range (labelled or not) */
+            predictions: number;
+            /** @enum {string} */
+            range: "24h" | "7d";
+            summary: components["schemas"]["PerformancePointDto"];
+        };
+        PerformancePointDto: {
+            accuracy: number | null;
+            f1: number | null;
+            labelled: number;
+            rocAuc: number | null;
         };
         PlaygroundInfoDto: {
             classes: (number | string)[];
@@ -1252,6 +1443,10 @@ export interface components {
                 [key: string]: string;
             };
         };
+        RunDriftDto: {
+            /** @description Window to analyse; default 24 */
+            windowHours?: number;
+        };
         RunDto: {
             dataset: components["schemas"]["DatasetRefDto"] | null;
             durationMs: number | null;
@@ -1273,15 +1468,43 @@ export interface components {
             /** @enum {string} */
             status: "RUNNING" | "SCHEDULED" | "FINISHED" | "FAILED" | "KILLED";
         };
+        RunEvaluationDto: {
+            /**
+             * Format: uuid
+             * @description A VALIDATED version of this model
+             */
+            candidateVersionId: string;
+            /**
+             * Format: uuid
+             * @description A stored, labelled dataset version of the project
+             */
+            datasetVersionId: string;
+            /** @description Label column in the dataset (default: churned) */
+            labelColumn?: string;
+        };
         RunPageDto: {
             data: components["schemas"]["RunDto"][];
             nextCursor: string | null;
+        };
+        ScoreDto: {
+            accuracy: number;
+            f1: number;
+            logLoss: number;
+            rocAuc: number;
+            rows: number;
         };
         SessionDto: {
             /** @description Send as X-CSRF-Token on POST/PUT/PATCH/DELETE. */
             csrfToken: string;
             memberships: components["schemas"]["MembershipSummaryDto"][];
             user: components["schemas"]["UserDto"];
+        };
+        SetChampionDto: {
+            /**
+             * Format: uuid
+             * @description A PASSED evaluation run against the current champion
+             */
+            evaluationId: string;
         };
         SignatureDto: {
             inputs: components["schemas"]["TensorSpecDto"][];
@@ -1301,6 +1524,11 @@ export interface components {
             features?: string[];
             name: string;
             shape: number[];
+        };
+        UpdateEndpointDto: {
+            /** @description Record request inputs (7 days) for drift detection. Off by default (privacy). */
+            captureInputs?: boolean;
+            rateLimitRps?: number;
         };
         UpdateProjectDto: {
             description?: string | null;
@@ -1351,6 +1579,11 @@ export interface components {
              */
             result: "PASSED" | "FAILED" | "ERROR";
             validatorVersion: string;
+        };
+        VersionRefDto: {
+            /** Format: uuid */
+            id: string;
+            version: number;
         };
     };
     responses: never;
@@ -1665,6 +1898,85 @@ export interface operations {
             };
         };
     };
+    Endpoints_update: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description ETag from GET (W/"<rowVersion>") */
+                "If-Match": string;
+            };
+            path: {
+                endpointId: string;
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateEndpointDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EndpointDetailDto"];
+                };
+            };
+        };
+    };
+    Monitoring_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                endpointId: string;
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Newest first (up to 30) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriftReportDto"][];
+                };
+            };
+        };
+    };
+    Monitoring_run: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                endpointId: string;
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunDriftDto"];
+            };
+        };
+        responses: {
+            /** @description Evidently data drift, run now */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriftReportDto"];
+                };
+            };
+        };
+    };
     Metrics_endpointMetrics: {
         parameters: {
             query?: {
@@ -1687,6 +1999,30 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EndpointMetricsDto"];
+                };
+            };
+        };
+    };
+    Monitoring_performance: {
+        parameters: {
+            query?: {
+                range?: "24h" | "7d";
+            };
+            header?: never;
+            path: {
+                endpointId: string;
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PerformanceDto"];
                 };
             };
         };
@@ -1765,6 +2101,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RevisionDto"];
+                };
+            };
+        };
+    };
+    Evaluation_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                evaluationId: string;
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationDto"];
                 };
             };
         };
@@ -1971,6 +2329,82 @@ export interface operations {
             };
         };
     };
+    Evaluation_setChampion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                modelId: string;
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetChampionDto"];
+            };
+        };
+        responses: {
+            /** @description The evaluation that crowned the new champion */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationDto"];
+                };
+            };
+        };
+    };
+    Evaluation_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                modelId: string;
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationDto"][];
+                };
+            };
+        };
+    };
+    Evaluation_run: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                modelId: string;
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunEvaluationDto"];
+            };
+        };
+        responses: {
+            /** @description Scored and judged by the project policy */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationDto"];
+                };
+            };
+        };
+    };
     Registry_importVersion: {
         parameters: {
             query?: never;
@@ -2028,6 +2462,11 @@ export interface operations {
                      * @description signature.json (max 1 MB)
                      */
                     signature: string;
+                    /**
+                     * Format: uuid
+                     * @description Optional: the dataset version it was trained on (enables drift monitoring)
+                     */
+                    trainingDatasetVersionId?: string;
                 };
             };
         };
@@ -2253,6 +2692,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DatasetVersionDto"][];
+                };
+            };
+        };
+    };
+    Datasets_upload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /**
+                     * Format: binary
+                     * @description CSV with a header row (max 100 MB)
+                     */
+                    file: string;
+                    /** @example churn-holdout */
+                    name: string;
+                    /** @example seed11-n4000 */
+                    version: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Stored content-addressed; the same bytes always give the same dataset version */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetVersionDto"];
                 };
             };
         };

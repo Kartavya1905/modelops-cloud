@@ -151,9 +151,13 @@ erDiagram
     uuid candidate_version_id FK
     uuid baseline_version_id FK
     uuid dataset_version_id FK
+    uuid model_id FK
+    enum status "COMPLETED FAILED"
     jsonb metrics "candidate, baseline, deltas"
-    jsonb policy_snapshot
+    jsonb policy "snapshot of the project's gate"
+    jsonb checks "rule, passed, detail"
     boolean passed
+    text failure_detail
     timestamptz created_at
   }
   ENDPOINT {
@@ -220,8 +224,10 @@ erDiagram
     int sample_count
     boolean dataset_drift
     float drift_share
-    jsonb feature_scores "feature, method, score, drifted"
-    text report_uri
+    uuid model_version_id FK
+    jsonb feature_scores "feature, kind, method, threshold, score, drifted"
+    text evidently_version
+    text trigger "manual or scheduled"
     timestamptz created_at
   }
   PREDICTION_RECORD {
@@ -230,7 +236,8 @@ erDiagram
     uuid endpoint_id FK
     uuid revision_id FK
     uuid model_version_id FK
-    jsonb output_summary "class, score - no raw inputs"
+    text label "predicted class - no raw inputs"
+    float score "probability of the positive class"
     timestamptz created_at
   }
   PREDICTION_FEEDBACK {
@@ -293,17 +300,15 @@ Two infrastructure tables are not drawn above to keep the diagram readable:
 | Idempotency keys | 24 hours | Retry window |
 | Sessions | 7 days sliding, 30 days absolute | Security |
 
-A scheduled worker job (`retention`) enforces these limits.
+A scheduled worker job (`retention`) enforces these limits. Since M7 the events worker purges prediction records (feedback cascades) and captured-input objects older than `MO_RETENTION_DAYS` (7) every hour. Evaluation and drift reports are append-only (database trigger) and kept.
 
 ## 5. Storage layout (S3-compatible)
 
 ```text
 mlflow-artifacts/              ← owned by MLflow
-model-artifacts/sha256/<hash>/model.onnx
-model-artifacts/sha256/<hash>/signature.json
-model-artifacts/sha256/<hash>/golden_examples.json
-datasets/<org>/<project>/<name>/v<version>/data.parquet
-drift-captures/<org>/<endpoint>/<yyyy-mm-dd>/<batch-id>.jsonl.gz
-reports/<org>/drift/<report-id>.html|json
+model-artifacts/blobs/sha256/<hash>       ← model.onnx, signature.json, golden_examples.json AND
+                                            dataset CSVs (M7): every object content-addressed, never overwritten
+drift-captures/<org>/<endpoint>/<yyyy-mm-dd>/<first-stream-id>.jsonl   ← captured inputs (M7), 7 days
+reports/                                  ← reserved (drift reports are rows in Postgres; no HTML yet)
 uploads-staging/<org>/<upload-id>/...   ← 24 h lifecycle; never served
 ```

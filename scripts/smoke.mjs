@@ -317,6 +317,18 @@ await check('ml-worker: /v1/validate refuses requests without the shared token',
   return 'HTTP 401';
 });
 
+await check('ml-worker: /v1/drift and /v1/evaluate refuse requests without the token', async () => {
+  for (const route of ['drift', 'evaluate']) {
+    const r = await http(`${mlWorkerUrl}/v1/${route}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+    });
+    assert(r.status === 401, `${route}: expected 401, got ${r.status}`);
+  }
+  return 'HTTP 401 x2';
+});
+
 // ------------------------------------------------- Docker socket proxy (M5)
 await check('docker-proxy: containers API allowed, everything dangerous denied', async () => {
   const list = await http(`${dockerProxyUrl}/containers/json`);
@@ -337,7 +349,7 @@ await check('docker-proxy: containers API allowed, everything dangerous denied',
 });
 
 // ------------------------------------------------------- Inference gateway (M5)
-await check('gateway: up, and predict without an API key is 401 problem+json', async () => {
+await check('gateway: up; predict and feedback without an API key are 401', async () => {
   const health = await http(`${gatewayUrl}/healthz`);
   assert(health.status === 200, `healthz: HTTP ${health.status}`);
   const r = await http(`${gatewayUrl}/v1/endpoints/smoke/predict`, {
@@ -346,7 +358,13 @@ await check('gateway: up, and predict without an API key is 401 problem+json', a
     body: '{"inputs":[]}',
   });
   assert(r.status === 401 && r.text.includes('INVALID_API_KEY'), `predict: HTTP ${r.status}`);
-  return 'HTTP 200 / 401';
+  const fb = await http(`${gatewayUrl}/v1/endpoints/smoke/feedback`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{"items":[]}',
+  });
+  assert(fb.status === 401, `feedback: HTTP ${fb.status}`);
+  return 'HTTP 200 / 401 / 401';
 });
 
 await check('gateway: internal admin API refuses requests without the token', async () => {

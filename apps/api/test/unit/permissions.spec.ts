@@ -16,6 +16,9 @@ import { EndpointsController } from '../../src/modules/deployments/endpoints.con
 import { ApiKeysController } from '../../src/modules/api-keys/api-keys.controller';
 import { PlaygroundController } from '../../src/modules/deployments/playground';
 import { MetricsController } from '../../src/modules/metrics/metrics.controller';
+import { MonitoringController } from '../../src/modules/monitoring/monitoring.controller';
+import { EvaluationController } from '../../src/modules/evaluation/evaluation';
+import { DatasetsController } from '../../src/modules/registry/datasets';
 
 describe('permission table', () => {
   it('Owner holds every permission; Viewer holds only read permissions', () => {
@@ -58,6 +61,9 @@ describe('every org-scoped route declares a permission', () => {
     ApiKeysController,
     PlaygroundController,
     MetricsController,
+    MonitoringController,
+    EvaluationController,
+    DatasetsController,
   ];
 
   const guarded = (target: object): boolean => {

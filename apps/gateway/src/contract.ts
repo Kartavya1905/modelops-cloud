@@ -5,6 +5,8 @@
 export const DP = {
   routingKey: 'mo:routing:snapshot',
   routingChannel: 'mo:routing:changed',
+  /** M7: prediction + feedback events, consumed by the worker */
+  eventsStream: 'mo:events',
   apiKeyPrefix: 'mo:apikey:',
   apiKeyChannel: 'mo:apikeys:changed',
 } as const;
@@ -26,6 +28,8 @@ export interface RoutedEndpoint {
   projectId: string;
   slug: string;
   rateLimitRps: number;
+  /** M7: also record request inputs (opt-in) for drift detection */
+  captureInputs: boolean;
   revision: RoutedRevision | null;
 }
 

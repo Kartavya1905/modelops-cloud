@@ -72,7 +72,7 @@ All host ports bind to `127.0.0.1` and are set in `.env`. Defaults deliberately 
 | MLflow server | 544 MiB measured (2 workers) |
 | API + worker (2 Node processes) | 300–500 MB |
 | Gateway | 80–150 MB |
-| ML worker (pandas, Evidently, ORT) | 300–600 MB |
+| ML worker (pandas, Evidently, ORT) | 714 MiB measured after drift checks (M7); the image is 2.8 GB on disk |
 | Web (`next dev`) | 400–900 MB |
 | Model servers (each, demo models) | 120–250 MB |
 | **Core total with 2 revisions** | **≈ 2–3.5 GB** |
@@ -97,7 +97,18 @@ pnpm dev:logs         # last 100 log lines per service
 pnpm dev:down         # stop containers, keep data
 ```
 
-Planned: `pnpm demo:seed` (M3), `pnpm demo:traffic` (M7), `pnpm dev:obs` (M10).
+Demo traffic (after deploying an endpoint and creating an API key in the UI):
+
+```bash
+pnpm demo:traffic --endpoint <slug> --key <mo_…>                  # steady k6 load (M6)
+pnpm demo:drift --endpoint <slug> --key <mo_…> --phase normal     # J3 (M7): predictions + true labels
+pnpm demo:drift --endpoint <slug> --key <mo_…> --phase data       # inputs shift: data drift
+pnpm demo:drift --endpoint <slug> --key <mo_…> --phase concept    # labels flip: performance drops, no drift
+```
+
+Turn on **Capture inputs** on the endpoint page before `demo:drift`, then press **Run drift check**.
+
+Planned: `pnpm dev:obs` (M10).
 
 > `pnpm setup` is a built-in pnpm command (it configures `PNPM_HOME`), which is why our script is named `env:init`.
 

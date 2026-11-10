@@ -316,4 +316,11 @@ export class MlflowClient {
       body: { name, version, key, value },
     });
   }
+
+  /** M7: mirrors the gated `champion` alias (MLflow 3 aliases, risk R11). */
+  async setModelAlias(name: string, alias: string, version: string): Promise<void> {
+    await this.request('POST', '/api/2.0/mlflow/registered-models/alias', {
+      body: { name, alias, version },
+    });
+  }
 }

@@ -1,4 +1,5 @@
 import { Global, Module } from '@nestjs/common';
+import { DatasetsService } from '../registry/datasets';
 import { ValidationController } from './validation.controller';
 import { ValidationQueue } from './validation.queue';
 import { ValidationService } from './validation.service';
@@ -8,8 +9,8 @@ import { ValidationWorker } from './validation.worker';
 @Global()
 @Module({
   controllers: [ValidationController],
-  providers: [ValidationQueue, ValidationService],
-  exports: [ValidationQueue, ValidationService],
+  providers: [ValidationQueue, ValidationService, DatasetsService],
+  exports: [ValidationQueue, ValidationService, DatasetsService],
 })
 export class ValidationModule {}
 

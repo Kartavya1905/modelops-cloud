@@ -20,7 +20,7 @@ import {
 import { Errors } from '../../common/errors/app-error';
 import { OrgAccessGuard, RequirePermission } from '../../common/authz/org-access.guard';
 import { Actor, type ActorContext } from '../../common/request-context/request-context';
-import { UuidParam } from '../../common/validation';
+import { isUuid, UuidParam } from '../../common/validation';
 import {
   CreateModelDto,
   DatasetVersionDto,
@@ -110,7 +110,7 @@ export class RegistryController {
       // In-memory (Nest's default) with hard limits enforced while the request streams in:
       // a larger part aborts the upload with 413.
       {
-        limits: { fileSize: 100 * 1024 * 1024, files: 3, fields: 2, parts: 5 },
+        limits: { fileSize: 100 * 1024 * 1024, files: 3, fields: 3, parts: 6 },
       },
     ),
   )
@@ -128,6 +128,11 @@ export class RegistryController {
           format: 'binary',
           description: 'golden_examples.json (max 1 MB)',
         },
+        trainingDatasetVersionId: {
+          type: 'string',
+          format: 'uuid',
+          description: 'Optional: the dataset version it was trained on (enables drift monitoring)',
+        },
       },
     },
   })
@@ -139,6 +144,7 @@ export class RegistryController {
     @OrgId() orgId: string,
     @Param('modelId', new UuidParam('Model')) modelId: string,
     @Body('framework') framework: unknown,
+    @Body('trainingDatasetVersionId') trainingDatasetVersionId: unknown,
     @UploadedFiles()
     files: Partial<Record<BundlePart, UploadedPart[]>> | undefined,
     @Actor() actor: ActorContext,
@@ -157,7 +163,15 @@ export class RegistryController {
     return this.registry.uploadVersion(
       orgId,
       modelId,
-      { framework, model, signature, golden },
+      {
+        framework,
+        model,
+        signature,
+        golden,
+        ...(typeof trainingDatasetVersionId === 'string' && isUuid(trainingDatasetVersionId)
+          ? { trainingDatasetVersionId }
+          : {}),
+      },
       actor,
     );
   }

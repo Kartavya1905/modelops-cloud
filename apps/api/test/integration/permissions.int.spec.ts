@@ -276,6 +276,68 @@ const ROUTES: RouteCase[] = [
         inputs: [{ a: 1 }],
       }),
   },
+  // ---- M7: datasets, monitoring, evaluation gates. Authorization is what's tested here, so
+  // any answer except 403 FORBIDDEN_ROLE proves the role passed (the data may be missing).
+  {
+    name: 'POST dataset',
+    permission: 'dataset:create',
+    allowedIf: (res) => res.status !== 403,
+    call: (c) =>
+      c.as.agent
+        .post(`${API}/orgs/${c.orgId}/projects/${c.projectId}/datasets`)
+        .set('x-csrf-token', c.as.session.csrfToken)
+        .field('name', 'matrix data')
+        .field('version', String(++counter))
+        .attach('file', Buffer.from(`a,b\n${String(counter)},2\n`), 'm.csv'),
+  },
+  {
+    name: 'PATCH endpoint',
+    permission: 'endpoint:update',
+    allowedIf: (res) => res.status !== 403,
+    call: (c) =>
+      c.as.agent
+        .patch(`${API}/orgs/${c.orgId}/endpoints/${c.endpointId}`)
+        .set('x-csrf-token', c.as.session.csrfToken)
+        .send({ rateLimitRps: 50 }),
+  },
+  {
+    name: 'GET drift reports',
+    permission: 'monitoring:read',
+    call: (c) => c.as.get(`/orgs/${c.orgId}/endpoints/${c.endpointId}/drift-reports`),
+  },
+  {
+    name: 'POST drift report',
+    permission: 'monitoring:run',
+    allowedIf: (res) => res.status !== 403,
+    call: (c) => c.as.post(`/orgs/${c.orgId}/endpoints/${c.endpointId}/drift-reports`, {}),
+  },
+  {
+    name: 'GET performance',
+    permission: 'monitoring:read',
+    call: (c) => c.as.get(`/orgs/${c.orgId}/endpoints/${c.endpointId}/performance`),
+  },
+  {
+    name: 'POST evaluation',
+    permission: 'evaluation:run',
+    allowedIf: (res) => res.status !== 403,
+    call: (c) =>
+      c.as.post(`/orgs/${c.orgId}/models/${c.modelId}/evaluations`, {
+        candidateVersionId: c.versionId,
+        datasetVersionId: c.versionId,
+      }),
+  },
+  {
+    name: 'GET evaluations',
+    permission: 'model:read',
+    call: (c) => c.as.get(`/orgs/${c.orgId}/models/${c.modelId}/evaluations`),
+  },
+  {
+    name: 'POST champion',
+    permission: 'model:promote',
+    allowedIf: (res) => res.status !== 403,
+    call: (c) =>
+      c.as.post(`/orgs/${c.orgId}/models/${c.modelId}/champion`, { evaluationId: c.versionId }),
+  },
   {
     name: 'DELETE api key',
     permission: 'apikey:manage',

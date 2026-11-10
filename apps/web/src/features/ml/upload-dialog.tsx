@@ -15,6 +15,7 @@ import {
 import { Alert, Field, Input } from '@/components/ui/primitives';
 import { NativeSelect } from '@/components/ui/select';
 import { ApiError } from '@/lib/api/client';
+import { useDatasets } from '@/features/monitoring/api';
 import { type BundleFiles, useUploadVersion } from './api';
 
 const MB = 1024 * 1024;
@@ -50,6 +51,8 @@ export function UploadDialog({
   const upload = useUploadVersion(orgId);
   const [framework, setFramework] = useState<BundleFiles['framework']>('SKLEARN_ONNX');
   const [files, setFiles] = useState<Partial<Record<PartKey, File>>>({});
+  const datasets = useDatasets(orgId, projectId);
+  const [trainedOn, setTrainedOn] = useState('');
 
   const tooBig = PARTS.filter((p) => (files[p.key]?.size ?? 0) > p.max);
   const complete = PARTS.every((p) => files[p.key]);
@@ -58,7 +61,17 @@ export function UploadDialog({
     const { model, signature, golden } = files;
     if (!model || !signature || !golden) return;
     upload.mutate(
-      { modelId, projectId, files: { framework, model, signature, golden } },
+      {
+        modelId,
+        projectId,
+        files: {
+          framework,
+          model,
+          signature,
+          golden,
+          ...(trainedOn ? { trainingDatasetVersionId: trainedOn } : {}),
+        },
+      },
       {
         onSuccess: (v) => {
           toast.success(`Uploaded as ${v.model.name} v${String(v.version)}; validating`);
@@ -99,6 +112,26 @@ export function UploadDialog({
             >
               <option value="SKLEARN_ONNX">scikit-learn → ONNX</option>
               <option value="PYTORCH_ONNX">PyTorch → ONNX</option>
+            </NativeSelect>
+          </Field>
+          <Field
+            id="upload-dataset"
+            label="Trained on (optional)"
+            hint="Its training dataset, if uploaded: needed to monitor this version for drift."
+          >
+            <NativeSelect
+              id="upload-dataset"
+              value={trainedOn}
+              onChange={(e) => setTrainedOn(e.target.value)}
+            >
+              <option value="">Not recorded</option>
+              {(datasets.data ?? [])
+                .filter((d) => d.stored)
+                .map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name} {d.version}
+                  </option>
+                ))}
             </NativeSelect>
           </Field>
           {PARTS.map((p) => (

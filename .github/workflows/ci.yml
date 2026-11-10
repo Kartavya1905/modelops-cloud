@@ -113,7 +113,7 @@ jobs:
     name: integration · smoke · e2e
     needs: [quality, ml, ml-worker, model-server]
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -132,6 +132,16 @@ jobs:
 
       - name: Apply database migrations
         run: pnpm db:deploy
+
+      # The seeded churn generator (ml/modelops_ml/datasets.py) makes the M7 drift and evaluation
+      # data for the integration tests; the M3 e2e test trains real models with it.
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2 (no floating major tag exists)
+        with:
+          enable-cache: true
+          cache-dependency-glob: ml/uv.lock
+
+      - name: Install the ML environment
+        run: uv sync --frozen --directory ml
 
       # M5 tests deploy real model-server containers through the socket proxy and start their
       # own gateway container on the test Redis database.
@@ -153,14 +163,6 @@ jobs:
 
       - name: Smoke test
         run: pnpm test:smoke
-
-      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2 (no floating major tag exists)
-        with:
-          enable-cache: true
-          cache-dependency-glob: ml/uv.lock
-
-      - name: Install the ML environment (the M3 e2e test trains real models)
-        run: uv sync --frozen --directory ml
 
       - name: Browser end-to-end tests (Playwright + axe)
         run: |

@@ -15,6 +15,7 @@ import type {
   EndpointDto,
   RevisionDto,
   RevisionSummaryDto,
+  UpdateEndpointDto,
 } from './deployments.dto';
 import { OUTBOX_DEPLOY } from './outbox.relay';
 import { CANCELLABLE, IN_PROGRESS } from './state-machine';
@@ -73,19 +74,33 @@ export class EndpointsService {
     return `${this.config.deploy.gatewayUrl}/v1/endpoints/${slug}/predict`;
   }
 
-  private async toDto(e: Prisma.EndpointGetPayload<object>): Promise<EndpointDto> {
-    const [stable, inProgress] = await Promise.all([
-      e.stableRevisionId
-        ? this.prisma.deploymentRevision.findUnique({
-            where: { id: e.stableRevisionId },
-            include: revisionInclude,
-          })
-        : null,
-      this.prisma.deploymentRevision.findFirst({
-        where: { endpointId: e.id, state: { in: [...IN_PROGRESS] } },
-        include: revisionInclude,
-      }),
-    ]);
+  /**
+   * Reads that must see ONE snapshot. VERIFYING -> READY and the stable pointer commit together;
+   * reading the endpoint row and then its revisions under READ COMMITTED could land between them
+   * and show neither a stable nor an in-progress revision, so the UI stops polling on "Nothing
+   * deployed yet" (seen in the parallel E2E run).
+   */
+  private snapshot<T>(fn: (db: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+    return this.prisma.$transaction(fn, {
+      isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
+    });
+  }
+
+  private async toDto(
+    e: Prisma.EndpointGetPayload<object>,
+    db: Prisma.TransactionClient = this.prisma,
+  ): Promise<EndpointDto> {
+    // Sequential: inside a transaction both queries share one connection anyway.
+    const stable = e.stableRevisionId
+      ? await db.deploymentRevision.findUnique({
+          where: { id: e.stableRevisionId },
+          include: revisionInclude,
+        })
+      : null;
+    const inProgress = await db.deploymentRevision.findFirst({
+      where: { endpointId: e.id, state: { in: [...IN_PROGRESS] } },
+      include: revisionInclude,
+    });
     return {
       id: e.id,
       projectId: e.projectId,
@@ -94,6 +109,8 @@ export class EndpointsService {
       description: e.description,
       environment: e.environment,
       rateLimitRps: e.rateLimitRps,
+      captureInputs: e.captureInputs,
+      rowVersion: e.rowVersion,
       invokeUrl: this.invokeUrl(e.slug),
       stableRevision: stable ? summary(stable) : null,
       inProgressRevision: inProgress ? summary(inProgress) : null,
@@ -159,26 +176,87 @@ export class EndpointsService {
   async list(orgId: string, projectId: string): Promise<EndpointDto[]> {
     const project = await this.prisma.project.findFirst({ where: { id: projectId, orgId } });
     if (!project) throw Errors.notFound('Project');
-    const rows = await this.prisma.endpoint.findMany({
-      where: { projectId },
-      orderBy: { createdAt: 'desc' },
+    return this.snapshot(async (db) => {
+      const rows = await db.endpoint.findMany({
+        where: { projectId },
+        orderBy: { createdAt: 'desc' },
+      });
+      const out: EndpointDto[] = [];
+      for (const e of rows) out.push(await this.toDto(e, db)); // one connection: sequential
+      return out;
     });
-    return Promise.all(rows.map((e) => this.toDto(e)));
+  }
+
+  /**
+   * Settings change with optimistic locking: `If-Match` must carry the current version (ETag),
+   * so two people editing at once can't silently overwrite each other (docs/04 "Concurrency").
+   */
+  async update(
+    orgId: string,
+    endpointId: string,
+    dto: UpdateEndpointDto,
+    ifMatch: string | undefined,
+    actor: ActorContext,
+  ): Promise<EndpointDetailDto> {
+    const expected = /^W\/"(\d+)"$/.exec(ifMatch ?? '')?.[1];
+    if (expected === undefined) {
+      throw new AppError(
+        HttpStatus.PRECONDITION_REQUIRED,
+        'IF_MATCH_REQUIRED',
+        'If-Match header required',
+        'Send the ETag from GET /endpoints/{id} as If-Match.',
+      );
+    }
+    const changed = await this.prisma.$transaction(async (tx) => {
+      const res = await tx.endpoint.updateMany({
+        where: { id: endpointId, orgId, rowVersion: Number(expected) },
+        data: {
+          ...(dto.captureInputs === undefined ? {} : { captureInputs: dto.captureInputs }),
+          ...(dto.rateLimitRps === undefined ? {} : { rateLimitRps: dto.rateLimitRps }),
+          rowVersion: { increment: 1 },
+        },
+      });
+      if (res.count === 1) {
+        await this.audit.record(tx, actor, {
+          orgId,
+          action: 'endpoint.updated',
+          targetType: 'endpoint',
+          targetId: endpointId,
+          metadata: { ...dto },
+        });
+      }
+      return res.count === 1;
+    });
+    if (!changed) {
+      const exists = await this.prisma.endpoint.findFirst({ where: { id: endpointId, orgId } });
+      if (!exists) throw Errors.notFound('Endpoint');
+      throw new AppError(
+        HttpStatus.PRECONDITION_FAILED,
+        'ETAG_MISMATCH',
+        'The endpoint changed meanwhile',
+        'Reload it and apply your change again.',
+      );
+    }
+    await this.dataplane.publishRouting(true); // the gateway starts/stops capturing right away
+    return this.get(orgId, endpointId);
   }
 
   async get(orgId: string, endpointId: string): Promise<EndpointDetailDto> {
-    const e = await this.prisma.endpoint.findFirst({
-      where: { id: endpointId, orgId },
-      include: { project: { select: { id: true, name: true, slug: true } } },
+    return this.snapshot(async (db) => {
+      const e = await db.endpoint.findFirst({
+        where: { id: endpointId, orgId },
+        include: { project: { select: { id: true, name: true, slug: true } } },
+      });
+      if (!e) throw Errors.notFound('Endpoint');
+      const revisions = await db.deploymentRevision.findMany({
+        where: { endpointId },
+        orderBy: { revisionNumber: 'desc' },
+        take: 50,
+        include: revisionInclude,
+      });
+      const dto = await this.toDto(e, db);
+      return { ...dto, project: e.project, revisions: revisions.map(summary) };
     });
-    if (!e) throw Errors.notFound('Endpoint');
-    const revisions = await this.prisma.deploymentRevision.findMany({
-      where: { endpointId },
-      orderBy: { revisionNumber: 'desc' },
-      take: 50,
-      include: revisionInclude,
-    });
-    return { ...(await this.toDto(e)), project: e.project, revisions: revisions.map(summary) };
   }
 
   async getRevision(orgId: string, revisionId: string): Promise<RevisionDto> {

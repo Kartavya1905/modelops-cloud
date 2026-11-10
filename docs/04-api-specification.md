@@ -51,14 +51,14 @@
 Cursor-based: `?limit=25&cursor=<opaque>` returns `{ "data": [...], "nextCursor": "..." | null }`. Maximum `limit` is 100.
 
 ### Idempotency
-- Required on `POST` endpoints that start asynchronous work: deploy, rollback, promote, canary, evaluation, drift run.
+- Required on `POST` endpoints that start asynchronous work: deploy, rollback, promote, canary. (Evaluations and drift checks run synchronously since M7 and each call appends one immutable report, so they take no key.)
 - Header: `Idempotency-Key: <uuid>`, scoped per organization and stored for 24 h.
 - Same key + same body hash → the **original response is replayed** (same status, same body).
 - Same key + different body → `409 IDEMPOTENCY_KEY_REUSED`.
 - A request still in progress under the same key → `409 DEPLOYMENT_IN_PROGRESS`, with `Retry-After`.
 
 ### Concurrency control
-Mutable aggregates (endpoint traffic settings) expose an `ETag`. Mutations require `If-Match`, and a stale `ETag` returns `412 Precondition Failed`. This stops two admins from overwriting each other's canary weight.
+Mutable aggregates (endpoint traffic settings) expose an `ETag`. Mutations require `If-Match` (missing → `428 IF_MATCH_REQUIRED`), and a stale `ETag` returns `412 ETAG_MISMATCH`. This stops two admins from overwriting each other's canary weight. The ETag versions the *settings* only, so these responses are `Cache-Control: no-store` and `If-None-Match` is ignored (a 304 would hide new revisions; found in M7).
 
 ### Rate limits (defaults)
 | Scope | Limit |
@@ -96,7 +96,7 @@ Role abbreviations: **O** Owner, **A** Admin, **E** ML Engineer, **V** Viewer. "
 |---|---|---|---|
 | GET / POST | `/orgs/{orgId}/projects` | Any / O, A, E | List / create |
 | GET / PATCH / DELETE | `/orgs/{orgId}/projects/{projectId}` | Any / O, A, E / O, A | Detail / update / archive |
-| GET / POST | `/orgs/{orgId}/projects/{projectId}/datasets` | Any / O, A, E | Dataset versions |
+| GET / POST | `/orgs/{orgId}/projects/{projectId}/datasets` | Any / O, A, E | Dataset versions. POST (M7) is multipart `file` (CSV with a header row, ≤ 100 MB) + `name` + `version`; stored content-addressed by SHA-256, and the same bytes return the existing version |
 | GET | `/orgs/{orgId}/projects/{projectId}/runs` | Any | MLflow runs (filter, sort, paginate) |
 | GET | `/orgs/{orgId}/runs/compare?ids=a,b,c` | Any | Aligned params and metrics for 2–5 runs |
 
@@ -111,16 +111,17 @@ Role abbreviations: **O** Owner, **A** Admin, **E** ML Engineer, **V** Viewer. "
 | GET | `/orgs/{orgId}/model-versions/{versionId}` | Any | Detail, signature, lineage |
 | GET | `/orgs/{orgId}/model-versions/{versionId}/validation` | Any | Latest validation report |
 | POST | `/orgs/{orgId}/model-versions/{versionId}/validation/rerun` | O, A, E | Re-validate (e.g. after validator outage) |
-| POST | `/orgs/{orgId}/model-versions/{versionId}/evaluations` | O, A, E | Evaluate against baseline `{ baselineVersionId, datasetVersionId }` (async) |
-| GET | `/orgs/{orgId}/model-versions/{versionId}/evaluations` | Any | Evaluation reports |
-| PUT | `/orgs/{orgId}/model-versions/{versionId}/aliases/{alias}` | O, A | Set `champion` / `challenger` (`champion` requires a passed gate) |
+| POST | `/orgs/{orgId}/models/{modelId}/evaluations` | O, A, E | Evaluate `{ candidateVersionId, datasetVersionId }` against the current champion (the baseline is never chosen by the caller), judged by the project's policy. Synchronous → `201` report; `FAILED` report if the data can't be scored (M7) |
+| GET | `/orgs/{orgId}/models/{modelId}/evaluations` | Any | Evaluation reports, newest first, with `canPromote` (M7) |
+| GET | `/orgs/{orgId}/evaluations/{evaluationId}` | Any | One report: metrics, deltas, policy snapshot, per-rule checks (M7) |
+| POST | `/orgs/{orgId}/models/{modelId}/champion` | O, A | `{ evaluationId }` → sets the `champion` alias (also mirrored to MLflow). `422 EVALUATION_NOT_PASSED`; `409 EVALUATION_STALE` if the champion changed since; `409 ALREADY_CHAMPION`. A database trigger enforces the same rule (M7). `challenger` comes with canaries (M8) |
 
 ### Endpoints, deployments, releases
 | Method | Path | Role | Description |
 |---|---|---|---|
 | GET / POST | `/orgs/{orgId}/projects/{projectId}/endpoints` | Any / O, A, E | List / create endpoint |
 | GET | `/orgs/{orgId}/endpoints/{endpointId}` | Any | Detail: traffic split, current revisions, ETag |
-| PATCH | `/orgs/{orgId}/endpoints/{endpointId}` | O, A | Settings (rate limit, input capture) + `If-Match` |
+| PATCH | `/orgs/{orgId}/endpoints/{endpointId}` | O, A, E | Settings `{ captureInputs?, rateLimitRps? }` + `If-Match` (M7). Environment-based restrictions for production arrive with approvals (M9) |
 | POST | `/orgs/{orgId}/endpoints/{endpointId}/revisions` | O, A, E | **Deploy** `{ modelVersionId, resources? }` + `Idempotency-Key` → `202` with revision |
 | GET | `/orgs/{orgId}/endpoints/{endpointId}/revisions` | Any | Revision history |
 | GET | `/orgs/{orgId}/revisions/{revisionId}` | Any | Revision detail + current state |
@@ -144,9 +145,8 @@ Role abbreviations: **O** Owner, **A** Admin, **E** ML Engineer, **V** Viewer. "
 |---|---|---|---|
 | GET | `/orgs/{orgId}/endpoints/{endpointId}/metrics?range=1h&series=rps,latency` | Any | `range` ∈ 15m, 1h, 6h, 24h; `series` ⊆ rps (by model version), latency (p50/p95/p99), errorRate, status. Exact request counts in `summary`. Any other parameter → 400. **No arbitrary PromQL** (M6; CPU/memory series come with M10) |
 | GET | `/orgs/{orgId}/overview` | Any | Organization overview: counts, endpoints serving, deployments (7 d), requests (24 h), recent deployments (M6) |
-| GET | `/orgs/{orgId}/endpoints/{endpointId}/performance?window=1h` | Any | Accuracy, F1, ROC-AUC from feedback |
-| GET / POST | `/orgs/{orgId}/endpoints/{endpointId}/drift-reports` | Any / O, A, E | List / run now |
-| GET | `/orgs/{orgId}/drift-reports/{reportId}` | Any | Per-feature scores (+ presigned link to the HTML report) |
+| GET | `/orgs/{orgId}/endpoints/{endpointId}/performance?range=24h` | Any | `range` ∈ 24h, 7d. Accuracy, F1, ROC-AUC from feedback labels, overall and in hourly/daily buckets, plus labelled / total predictions (M7) |
+| GET / POST | `/orgs/{orgId}/endpoints/{endpointId}/drift-reports` | Any / O, A, E | List (newest first, with per-feature method, threshold, score, drifted) / run now: captured inputs of the last 24 h (≤ 5000) vs the serving version's training dataset. `409 NO_READY_REVISION` / `DRIFT_REFERENCE_UNAVAILABLE`, `422 NOT_ENOUGH_SAMPLES` (< 100), `503 ML_WORKER_UNAVAILABLE` (M7). Also runs hourly. No HTML report (see the M7 doc) |
 | GET | `/orgs/{orgId}/platform/metrics` | O, A | Queue depth, job failures, stage durations |
 
 ### API keys and audit
@@ -203,7 +203,7 @@ POST /v1/endpoints/churn-prod/feedback
 Authorization: Bearer mo_...
 { "items": [{ "predictionId": "0193b0c4-...", "label": 1 }] }
 ```
-→ `202 Accepted`. Labels for unknown or expired prediction ids are counted and ignored.
+→ `202 Accepted` `{ "accepted": n }` once the items are on the event stream (`503` if it is unavailable). Needs the key scope `feedback` (default for new keys), at most 1000 items, and each label must be one of the model's classes (`400` otherwise). Labels for unknown or expired prediction ids, or for another endpoint's predictions, are counted and ignored by the worker (M7).
 
 ### Model server (internal only, not exposed outside the `inference` network)
 | Method | Path | Description |

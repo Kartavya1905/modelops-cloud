@@ -58,7 +58,20 @@ async function main(): Promise<void> {
   await refresh();
   setInterval(() => void refresh(), config.routingPollMs).unref();
 
+  // M7: prediction/feedback events. MAXLEN ~ bounds memory if the worker is down for long.
+  const events = {
+    publish: async (batch: Record<string, string>[]) => {
+      const pipe = redis.pipeline();
+      for (const e of batch) {
+        pipe.xadd(DP.eventsStream, 'MAXLEN', '~', '200000', '*', ...Object.entries(e).flat());
+      }
+      const results = await pipe.exec();
+      if (!results || results.some(([err]) => err)) throw new Error('XADD failed');
+    },
+  };
+
   const deps = {
+    events,
     config,
     routing,
     keys,

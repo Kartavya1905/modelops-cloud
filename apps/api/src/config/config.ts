@@ -49,6 +49,12 @@ const ConfigSchema = z.object({
   MO_DRAIN_GRACE_MS: z.coerce.number().int().min(0).max(86_400_000).default(1_800_000),
   // M6: dashboards read Prometheus through allow-listed queries only
   MO_PROMETHEUS_URL: z.url({ protocol: /^https?$/ }).default('http://127.0.0.1:19090'),
+  // M7: monitoring
+  MO_CAPTURE_BUCKET: z.string().min(3).default('drift-captures'),
+  MO_DRIFT_INTERVAL_MS: z.coerce.number().int().min(10_000).max(86_400_000).default(3_600_000),
+  MO_DRIFT_WINDOW_HOURS: z.coerce.number().int().min(1).max(168).default(24),
+  MO_DRIFT_MIN_SAMPLES: z.coerce.number().int().min(30).max(100_000).default(100),
+  MO_RETENTION_DAYS: z.coerce.number().int().min(1).max(90).default(7),
   /** Labels every container this deployment creates; a reconciler only manages its own. */
   MO_INSTANCE_ID: z
     .string()
@@ -81,6 +87,13 @@ export interface AppConfig {
   /** HMAC pepper for inference API keys (shared with the gateway, ADR-0006). */
   apiKeyPepper: string;
   prometheusUrl: string;
+  monitoring: {
+    captureBucket: string;
+    driftIntervalMs: number;
+    driftWindowHours: number;
+    driftMinSamples: number;
+    retentionDays: number;
+  };
   deploy: {
     dockerProxyUrl: string;
     modelServerImage: string;
@@ -139,6 +152,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     },
     apiKeyPepper: c.MO_API_KEY_PEPPER,
     prometheusUrl: c.MO_PROMETHEUS_URL.replace(/\/+$/, ''),
+    monitoring: {
+      captureBucket: c.MO_CAPTURE_BUCKET,
+      driftIntervalMs: c.MO_DRIFT_INTERVAL_MS,
+      driftWindowHours: c.MO_DRIFT_WINDOW_HOURS,
+      driftMinSamples: c.MO_DRIFT_MIN_SAMPLES,
+      retentionDays: c.MO_RETENTION_DAYS,
+    },
     deploy: {
       dockerProxyUrl: c.MO_DOCKER_PROXY_URL.replace(/\/+$/, ''),
       modelServerImage: c.MO_MODEL_SERVER_IMAGE,

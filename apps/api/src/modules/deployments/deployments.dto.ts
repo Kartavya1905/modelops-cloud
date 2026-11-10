@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import {
+  IsBoolean,
   IsIn,
   IsInt,
   IsNumber,
@@ -66,6 +67,23 @@ export class CreateEndpointDto {
   environment?: 'STAGING' | 'PRODUCTION';
 
   @ApiPropertyOptional({ minimum: 1, maximum: 1000, description: 'Default 50' })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(1000)
+  rateLimitRps?: number;
+}
+
+/** M7: endpoint settings. Sent with `If-Match: <ETag from GET>` (lost-update protection). */
+export class UpdateEndpointDto {
+  @ApiPropertyOptional({
+    description: 'Record request inputs (7 days) for drift detection. Off by default (privacy).',
+  })
+  @IsOptional()
+  @IsBoolean()
+  captureInputs?: boolean;
+
+  @ApiPropertyOptional({ minimum: 1, maximum: 1000 })
   @IsOptional()
   @IsInt()
   @Min(1)
@@ -157,6 +175,10 @@ export class EndpointDto {
   @ApiProperty({ type: String, nullable: true }) description!: string | null;
   @ApiProperty({ enum: ['STAGING', 'PRODUCTION'] }) environment!: 'STAGING' | 'PRODUCTION';
   @ApiProperty() rateLimitRps!: number;
+  @ApiProperty({ description: 'Inputs are recorded for drift detection (opt-in)' })
+  captureInputs!: boolean;
+  @ApiProperty({ description: 'Optimistic-lock version; also sent as the ETag header' })
+  rowVersion!: number;
   @ApiProperty({ description: 'POST here with an API key of this project' }) invokeUrl!: string;
   @ApiProperty({ type: RevisionSummaryDto, nullable: true })
   stableRevision!: RevisionSummaryDto | null;

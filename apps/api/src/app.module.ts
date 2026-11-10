@@ -12,6 +12,7 @@ import { DeploymentsModule } from './modules/deployments/deployments.module';
 import { ExperimentsModule } from './modules/experiments/experiments.module';
 import { MetricsModule } from './modules/metrics/metrics.module';
 import { MlflowModule } from './modules/mlflow/mlflow.module';
+import { MonitoringModule } from './modules/monitoring/monitoring.module';
 import { OrganizationsModule } from './modules/organizations/organizations.module';
 import { ProjectsModule } from './modules/projects/projects.module';
 import { RegistryModule } from './modules/registry/registry.module';
@@ -38,6 +39,7 @@ import { ValidationModule } from './modules/validation/validation.module';
     RegistryModule,
     DeploymentsModule,
     MetricsModule,
+    MonitoringModule,
   ],
   providers: [{ provide: APP_FILTER, useClass: ProblemFilter }],
 })

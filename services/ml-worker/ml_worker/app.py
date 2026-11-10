@@ -1,6 +1,8 @@
 """Internal HTTP API of the ML worker (called only by the platform's Node worker).
 
-    POST /v1/validate   validate one bundle stored in object storage
+    POST /v1/validate   validate one bundle stored in object storage (M4)
+    POST /v1/drift      Evidently data drift: captured inputs vs the training dataset (M7)
+    POST /v1/evaluate   score candidate (and baseline) models on a labelled dataset (M7)
     GET  /healthz       liveness
 
 Authentication: a shared token in `X-ModelOps-Token` (the service is also only reachable from the
@@ -9,12 +11,15 @@ platform network). Storage access uses a READ-ONLY S3 identity scoped to the art
 
 from __future__ import annotations
 
+import hashlib
 import hmac
+import io
 import os
 from functools import lru_cache
 from typing import Annotated, Any
 
 import boto3
+import pandas as pd
 from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
 from fastapi import Depends, FastAPI, Header, HTTPException
@@ -38,6 +43,32 @@ class ValidateRequest(BaseModel):
     model: BlobRef
     signature: BlobRef
     golden: BlobRef
+
+
+FEATURE = r"^[A-Za-z_][A-Za-z0-9_]{0,63}$"
+MAX_DATASET_BYTES = 100 * 1024 * 1024
+Row = Annotated[list[float], Field(min_length=1, max_length=200)]
+
+
+class DriftRequest(BaseModel):
+    model_config = {"extra": "forbid"}
+    reference: BlobRef
+    features: Annotated[
+        list[Annotated[str, Field(pattern=FEATURE)]], Field(min_length=1, max_length=200)
+    ]
+    current: Annotated[list[Row], Field(min_length=30, max_length=50_000)]
+
+
+class EvaluateRequest(BaseModel):
+    model_config = {"extra": "forbid"}
+    dataset: BlobRef
+    features: Annotated[
+        list[Annotated[str, Field(pattern=FEATURE)]], Field(min_length=1, max_length=200)
+    ]
+    label: str = Field(default="churned", pattern=FEATURE)
+    inputName: str = Field(pattern=FEATURE)
+    candidate: BlobRef
+    baseline: BlobRef | None = None
 
 
 class Settings:
@@ -145,3 +176,62 @@ def validate(req: ValidateRequest) -> dict[str, Any]:
         },
         limits=s.limits,
     )
+
+
+def _blob(client: Any, s: Settings, ref: BlobRef, max_bytes: int) -> bytes:
+    """Fetches a content-addressed blob and proves it is still the bytes we recorded."""
+    try:
+        data = _fetch(client, s.bucket, ref.key, max_bytes)
+    except OverflowError as exc:
+        raise HTTPException(status_code=422, detail=f"object is over {max_bytes} bytes") from exc
+    except ClientError as exc:
+        code = exc.response.get("Error", {}).get("Code", "")
+        if code in ("404", "NoSuchKey", "NotFound"):
+            raise HTTPException(status_code=422, detail="object not found in storage") from exc
+        raise HTTPException(status_code=503, detail=f"storage error: {code}") from exc
+    except BotoCoreError as exc:
+        raise HTTPException(status_code=503, detail="storage unavailable") from exc
+    if hashlib.sha256(data).hexdigest() != ref.sha256:
+        raise HTTPException(status_code=422, detail="content changed since it was recorded")
+    return data
+
+
+@app.post("/v1/drift", dependencies=[Depends(require_token)])
+def drift(req: DriftRequest) -> dict[str, Any]:
+    from .drift import detect  # Evidently is heavy: import only when drift is requested
+
+    if any(len(row) != len(req.features) for row in req.current):
+        raise HTTPException(status_code=422, detail="every current row needs one value per feature")
+    s = settings()
+    reference = pd.read_csv(io.BytesIO(_blob(s3_client(s), s, req.reference, MAX_DATASET_BYTES)))
+    current = pd.DataFrame(req.current, columns=req.features)
+    try:
+        return detect(reference, current, req.features).to_json()
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/v1/evaluate", dependencies=[Depends(require_token)])
+def evaluate(req: EvaluateRequest) -> dict[str, Any]:
+    from .evaluate import read_dataset, score
+
+    s = settings()
+    client = s3_client(s)
+    try:
+        x, y = read_dataset(
+            _blob(client, s, req.dataset, MAX_DATASET_BYTES), req.features, req.label
+        )
+        candidate = score(
+            _blob(client, s, req.candidate, s.limits.max_model_bytes), x, y, req.inputName
+        )
+        baseline = (
+            score(_blob(client, s, req.baseline, s.limits.max_model_bytes), x, y, req.inputName)
+            if req.baseline
+            else None
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {
+        "candidate": candidate.to_json(),
+        "baseline": baseline.to_json() if baseline else None,
+    }

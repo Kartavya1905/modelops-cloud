@@ -35,6 +35,13 @@ export const PERMISSIONS = {
   'deployment:cancel': WRITERS,
   'apikey:read': ADMINS,
   'apikey:manage': ADMINS,
+  // M7: monitoring (drift, performance), evaluation gates, champion alias
+  'monitoring:read': ALL,
+  'monitoring:run': WRITERS,
+  'endpoint:update': WRITERS,
+  'dataset:create': WRITERS,
+  'evaluation:run': WRITERS,
+  'model:promote': ADMINS,
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Permission = keyof typeof PERMISSIONS;

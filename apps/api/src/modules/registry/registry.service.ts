@@ -5,7 +5,6 @@ import { ArtifactStore } from '../../common/storage/artifact-store';
 import type { ActorContext } from '../../common/request-context/request-context';
 import { slugify } from '../../common/slug';
 import {
-  type DatasetVersion,
   type ModelFramework,
   type ModelVersion,
   Prisma,
@@ -22,6 +21,7 @@ import type {
   ModelVersionDto,
   ModelVersionSummaryDto,
 } from './registry.dto';
+import { datasetDto } from './datasets';
 import { parseSignature, type Signature } from './signature';
 import { reportDto } from '../validation/validation.controller';
 import { ValidationQueue } from '../validation/validation.queue';
@@ -50,19 +50,6 @@ function summary(v: ModelVersion): ModelVersionSummaryDto {
     mlflowVersion: v.mlflowVersion,
     metrics: v.metrics as Record<string, number>,
     createdAt: v.createdAt.toISOString(),
-  };
-}
-
-function datasetDto(d: DatasetVersion): DatasetVersionDto {
-  return {
-    id: d.id,
-    name: d.name,
-    version: d.version,
-    sha256: d.sha256,
-    rowCount: d.rowCount,
-    uri: d.uri,
-    generatorParams: d.generatorParams as Record<string, string>,
-    createdAt: d.createdAt.toISOString(),
   };
 }
 
@@ -173,6 +160,7 @@ export class RegistryService {
       taskType: m.taskType,
       mlflowName: m.mlflowName,
       versionCount,
+      championVersionId: m.championVersionId,
       latestVersion: latest ? summary(latest) : null,
       createdAt: m.createdAt.toISOString(),
     };
@@ -400,7 +388,14 @@ export class RegistryService {
   async uploadVersion(
     orgId: string,
     modelId: string,
-    upload: { framework: string; model: Buffer; signature: Buffer; golden: Buffer },
+    upload: {
+      framework: string;
+      model: Buffer;
+      signature: Buffer;
+      golden: Buffer;
+      /** M7: lineage for uploaded bundles (drift needs the training data as reference) */
+      trainingDatasetVersionId?: string;
+    },
     actor: ActorContext,
   ): Promise<ModelVersionDto> {
     const model = await this.prisma.registeredModel.findFirst({
@@ -410,6 +405,13 @@ export class RegistryService {
     if (!model) throw Errors.notFound('Model');
     if (model.project.archivedAt)
       throw Errors.conflict('PROJECT_ARCHIVED', 'This project is archived.');
+    if (upload.trainingDatasetVersionId) {
+      const ds = await this.prisma.datasetVersion.findFirst({
+        where: { id: upload.trainingDatasetVersionId, projectId: model.projectId },
+        select: { id: true },
+      });
+      if (!ds) throw Errors.notFound('Training dataset version');
+    }
     if (!FRAMEWORKS.includes(upload.framework as ModelFramework)) {
       throw unprocessable(
         'UNSUPPORTED_FRAMEWORK',
@@ -463,6 +465,7 @@ export class RegistryService {
           signatureSha256: s.sha256,
           goldenSha256: g.sha256,
           sizeBytes: upload.model.length,
+          trainingDatasetVersionId: upload.trainingDatasetVersionId ?? null,
           createdById: actor.userId,
         },
       });

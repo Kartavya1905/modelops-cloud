@@ -50,7 +50,7 @@
 | onnxruntime | **1.31.1** (installed M3) | CPU build |
 | scikit-learn / skl2onnx | **1.9.1 / 1.20.0** (installed M3) | Compatible for GradientBoosting; parity 3e-7 (risk R6) |
 | torch | **2.14.1+cpu** (installed M3) | 2.15.0 was 6 days old; training only, never in serving images |
-| evidently | 0.7.x | Drift reports (risk R5) |
+| evidently | **0.7.23** (installed M7, ml-worker only) | Drift tests per feature (risk R5). Needs **pandas < 3**: the ml-worker pins pandas 2.3.3, while the training env keeps pandas 3.1.0. Telemetry off (`EVIDENTLY_DISABLE_TELEMETRY=1`) |
 
 ## Infrastructure
 

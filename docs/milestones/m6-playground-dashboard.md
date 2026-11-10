@@ -1,6 +1,6 @@
 # Milestone 6 — Prediction Playground and Operational Dashboard
 
-> **Status: implemented and verified locally (2026-11-09, Windows 11 + Docker Desktop).** CI on Linux has not run yet: `PROGRESS.md` ticks M6 only after a green CI run.
+> **Status: done (2026-11-09).** Verified locally on Windows 11 and in CI on Linux: [run 42749620276](https://github.com/Kartavya1905/modelops-cloud/actions/runs/42749620276), including the k6 == dashboard acceptance test and the Playwright slice.
 
 ![An endpoint with its playground and traffic dashboard](../images/m6-endpoint.png)
 
@@ -145,7 +145,7 @@ ESLint (strict), Prettier, tsc ×5, next build, contract regenerated: all pass
 | Org overview dashboard | ✅ |
 | Playwright full slice (login → deploy → playground predict) | ✅ plus k6 traffic, dashboard and overview |
 | Dashboard numbers move with `demo-traffic` and match k6's counts within tolerance | ✅ **exactly equal** in the integration test and the e2e test |
-| CI green on Linux | ⏳ pending the next push |
+| CI green on Linux | ✅ [run 42749620276](https://github.com/Kartavya1905/modelops-cloud/actions/runs/42749620276) |
 
 ## L. Completion checklist
 
@@ -155,4 +155,4 @@ ESLint (strict), Prettier, tsc ×5, next build, contract regenerated: all pass
 - [x] Web: dashboard, playground, overview
 - [x] `pnpm demo:traffic` (k6)
 - [x] Unit, component, integration (k6 == dashboard), e2e + axe, smoke
-- [ ] Green CI run on Linux
+- [x] Green CI run on Linux

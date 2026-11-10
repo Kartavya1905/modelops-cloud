@@ -29,6 +29,7 @@ Phase 0 design set. Read in order for the full picture, or jump to what an inter
 | M4 | [Model validation and artifact storage](milestones/m4-validation-artifacts.md) |
 | M5 | [Inference deployment pipeline](milestones/m5-deployment-pipeline.md) |
 | M6 | [Prediction playground and operational dashboard](milestones/m6-playground-dashboard.md) |
+| M7 | [Drift monitoring and model evaluation](milestones/m7-drift-evaluation.md) |
 
 ## Architecture Decision Records
 
@@ -51,5 +52,6 @@ Phase 0 design set. Read in order for the full picture, or jump to what an inter
 | Optional AWS deployment | Terraform validated, never applied | Zero-cost constraint (ADR-0008) |
 | "Latest versions" | Latest **stable and ≥ 7 days old**; Prisma 7.x not 8.0 RC; Node 24 LTS; TypeScript 6 | ADR-0007 |
 | `Pipeline(StandardScaler → GBM)` | GBM without scaler | The scaler broke ONNX parity (4.3e-2); trees are scale-invariant (M3 doc) |
-| MLflow aliases in M3 | Deferred to M7 | `champion` requires the evaluation gate (M3 doc) |
+| MLflow aliases in M3 | `champion` since M7, `challenger` with canaries (M8) | `champion` requires the evaluation gate (M7 doc) |
+| Evaluations and drift as queued jobs | Synchronous calls, one append-only report each; hourly drift in the worker | Seconds of work at demo scale (M7 doc) |
 | shadcn/ui (CLI) | shadcn-style components written into the repo (Radix + cva) | CLI installs just-published versions that the release-age policy blocks (M2 doc) |

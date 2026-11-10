@@ -38,6 +38,7 @@ import { useOrgId } from '@/features/org/org-shell';
 import { ApiError, errorMessage } from '@/lib/api/client';
 import { cn, formatDateTime, formatRelative } from '@/lib/utils';
 import { CopyField } from './api-keys-section';
+import { MonitoringPanel } from '@/features/monitoring/monitoring-panel';
 import { EndpointDashboard } from './dashboard';
 import { Playground } from './playground';
 import { isSettled, useCancelRevision, useDeploy, useEndpoint, useRevision } from './api';
@@ -377,6 +378,7 @@ export function EndpointPage() {
         revisionId={e.stableRevision?.state === 'READY' ? e.stableRevision.id : null}
       />
       <EndpointDashboard orgId={orgId} endpointId={e.id} />
+      <MonitoringPanel orgId={orgId} endpoint={e} />
       {latest && <LatestDeployment orgId={orgId} endpointId={e.id} revisionId={latest.id} />}
       {e.revisions.length > 1 && (
         <Card>

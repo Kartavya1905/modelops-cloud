@@ -116,6 +116,8 @@ model Organization {
   endpoints        Endpoint[]
   revisions        DeploymentRevision[]
   apiKeys          ApiKey[]
+  evaluations      EvaluationReport[]
+  driftReports     DriftReport[]
 
   @@map("organizations")
 }
@@ -175,6 +177,8 @@ model Project {
   datasetVersions  DatasetVersion[]
   endpoints        Endpoint[]
   apiKeys          ApiKey[]
+  /// Evaluation gate thresholds (M7), snapshotted into every evaluation report.
+  evaluationPolicy Json              @default("{\"minRocAuc\": 0.7, \"maxRocAucDrop\": 0.01, \"maxLogLossIncrease\": 0.02}") @map("evaluation_policy")
 
   @@unique([orgId, slug])
   @@index([orgId, createdAt(sort: Desc)])
@@ -183,22 +187,27 @@ model Project {
 
 /// A dataset a model was trained on, identified by the SHA-256 of its canonical bytes.
 model DatasetVersion {
-  id              String   @id @default(uuid()) @db.Uuid
-  orgId           String   @map("org_id") @db.Uuid
-  projectId       String   @map("project_id") @db.Uuid
+  id              String    @id @default(uuid()) @db.Uuid
+  orgId           String    @map("org_id") @db.Uuid
+  projectId       String    @map("project_id") @db.Uuid
   name            String
   /// Human label from the generator, e.g. `seed7-n20000`.
   version         String
-  sha256          String   @db.Char(64)
-  rowCount        Int?     @map("row_count")
+  sha256          String    @db.Char(64)
+  rowCount        Int?      @map("row_count")
   /// Where the bytes are, e.g. `runs:/<run-id>/dataset/train.csv`.
   uri             String
-  generatorParams Json     @default("{}") @map("generator_params")
-  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  generatorParams Json      @default("{}") @map("generator_params")
+  /// M7: the CSV is in content-addressed storage (`blobs/sha256/<sha256>`), verified against sha256.
+  storedAt        DateTime? @map("stored_at") @db.Timestamptz(3)
+  columns         String[]  @default([])
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  org           Organization   @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  project       Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  org           Organization       @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  project       Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
   modelVersions ModelVersion[]
+  evaluations   EvaluationReport[]
+  driftReports  DriftReport[]
 
   @@unique([projectId, sha256])
   @@index([orgId, createdAt(sort: Desc)])
@@ -206,22 +215,30 @@ model DatasetVersion {
 }
 
 model RegisteredModel {
-  id          String   @id @default(uuid()) @db.Uuid
-  orgId       String   @map("org_id") @db.Uuid
-  projectId   String   @map("project_id") @db.Uuid
-  slug        String
-  name        String
-  description String?
-  taskType    TaskType @default(BINARY_CLASSIFICATION) @map("task_type")
+  id                   String    @id @default(uuid()) @db.Uuid
+  orgId                String    @map("org_id") @db.Uuid
+  projectId            String    @map("project_id") @db.Uuid
+  slug                 String
+  name                 String
+  description          String?
+  taskType             TaskType  @default(BINARY_CLASSIFICATION) @map("task_type")
   /// Globally unique name in the MLflow Model Registry: `<org-slug>.<project-slug>.<model-slug>`.
-  mlflowName  String   @unique @map("mlflow_name")
-  createdById String   @map("created_by_id") @db.Uuid
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  mlflowName           String    @unique @map("mlflow_name")
+  createdById          String    @map("created_by_id") @db.Uuid
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  /// M7: the `champion` alias. Set only together with a PASSED evaluation of that version against
+  /// the previous champion (DB trigger `registered_models_champion_guard`).
+  championVersionId    String?   @unique @map("champion_version_id") @db.Uuid
+  championEvaluationId String?   @unique @map("champion_evaluation_id") @db.Uuid
+  championSetAt        DateTime? @map("champion_set_at") @db.Timestamptz(3)
 
-  org       Organization   @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  project   Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  createdBy User           @relation(fields: [createdById], references: [id])
-  versions  ModelVersion[]
+  org                Organization       @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  project            Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy          User               @relation(fields: [createdById], references: [id])
+  versions           ModelVersion[]
+  championVersion    ModelVersion?      @relation("Champion", fields: [championVersionId], references: [id])
+  championEvaluation EvaluationReport?  @relation("ChampionEvaluation", fields: [championEvaluationId], references: [id])
+  evaluations        EvaluationReport[] @relation("ModelEvaluations")
 
   @@unique([projectId, slug])
   @@index([orgId, createdAt(sort: Desc)])
@@ -270,6 +287,10 @@ model ModelVersion {
   createdBy       User                 @relation(fields: [createdById], references: [id])
   validations     ValidationReport[]
   revisions       DeploymentRevision[]
+  championOf      RegisteredModel?     @relation("Champion")
+  candidateIn     EvaluationReport[]   @relation("EvaluationCandidate")
+  baselineIn      EvaluationReport[]   @relation("EvaluationBaseline")
+  driftReports    DriftReport[]
 
   @@unique([modelId, version])
   @@unique([modelId, mlflowRunId])
@@ -358,6 +379,8 @@ model Endpoint {
   /// The revision receiving traffic. Must belong to this endpoint (trigger).
   stableRevisionId String?             @unique @map("stable_revision_id") @db.Uuid
   rateLimitRps     Int                 @default(50) @map("rate_limit_rps")
+  /// M7, opt-in: also store request inputs (7 days) for drift detection. Off by default (privacy).
+  captureInputs    Boolean             @default(false) @map("capture_inputs")
   /// Optimistic-lock counter (ETag) for traffic settings (used from M8).
   rowVersion       Int                 @default(0) @map("row_version")
   createdById      String              @map("created_by_id") @db.Uuid
@@ -369,6 +392,8 @@ model Endpoint {
   createdBy      User                 @relation(fields: [createdById], references: [id])
   stableRevision DeploymentRevision?  @relation("StableRevision", fields: [stableRevisionId], references: [id])
   revisions      DeploymentRevision[] @relation("EndpointRevisions")
+  predictions    PredictionRecord[]
+  driftReports   DriftReport[]
 
   @@unique([projectId, slug])
   @@index([orgId, createdAt(sort: Desc)])
@@ -477,7 +502,7 @@ model ApiKey {
   prefix      String    @unique
   /// HMAC-SHA256(pepper, secret)
   secretHash  Bytes     @map("secret_hash")
-  scopes      String[]  @default(["predict"])
+  scopes      String[]  @default(["predict", "feedback"])
   expiresAt   DateTime? @map("expires_at") @db.Timestamptz(3)
   lastUsedAt  DateTime? @map("last_used_at") @db.Timestamptz(3)
   revokedAt   DateTime? @map("revoked_at") @db.Timestamptz(3)
@@ -490,4 +515,102 @@ model ApiKey {
 
   @@index([projectId, createdAt(sort: Desc)])
   @@map("api_keys")
+}
+
+// ======================================================= M7: monitoring, drift, evaluation gates
+
+/// One served prediction (from the gateway's event stream). Output summary only, never inputs.
+/// Kept 7 days so late ground-truth labels can be joined (measured performance).
+model PredictionRecord {
+  id             String   @id @db.Uuid
+  orgId          String   @map("org_id") @db.Uuid
+  endpointId     String   @map("endpoint_id") @db.Uuid
+  revisionId     String   @map("revision_id") @db.Uuid
+  modelVersionId String   @map("model_version_id") @db.Uuid
+  /// predicted class
+  label          String
+  /// probability of the positive (last) class
+  score          Float
+  createdAt      DateTime @map("created_at") @db.Timestamptz(3)
+
+  endpoint Endpoint            @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+  feedback PredictionFeedback?
+
+  @@index([endpointId, createdAt])
+  @@index([createdAt])
+  @@map("prediction_records")
+}
+
+/// Ground truth sent later by the client (`POST /v1/endpoints/<slug>/feedback`).
+model PredictionFeedback {
+  predictionId String   @id @map("prediction_id") @db.Uuid
+  label        String
+  receivedAt   DateTime @default(now()) @map("received_at") @db.Timestamptz(3)
+
+  prediction PredictionRecord @relation(fields: [predictionId], references: [id], onDelete: Cascade)
+
+  @@map("prediction_feedback")
+}
+
+/// Evidently data-drift report: captured inputs (a window) vs the serving version's training data.
+model DriftReport {
+  id                        String   @id @default(uuid()) @db.Uuid
+  orgId                     String   @map("org_id") @db.Uuid
+  endpointId                String   @map("endpoint_id") @db.Uuid
+  modelVersionId            String   @map("model_version_id") @db.Uuid
+  referenceDatasetVersionId String   @map("reference_dataset_version_id") @db.Uuid
+  windowStart               DateTime @map("window_start") @db.Timestamptz(3)
+  windowEnd                 DateTime @map("window_end") @db.Timestamptz(3)
+  sampleCount               Int      @map("sample_count")
+  datasetDrift              Boolean  @map("dataset_drift")
+  driftShare                Float    @map("drift_share")
+  /// [{ feature, kind, method, threshold, score, drifted }]
+  featureScores             Json     @map("feature_scores")
+  evidentlyVersion          String   @map("evidently_version")
+  trigger                   String   @default("manual")
+  createdAt                 DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  org              Organization   @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  endpoint         Endpoint       @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+  modelVersion     ModelVersion   @relation(fields: [modelVersionId], references: [id])
+  referenceDataset DatasetVersion @relation(fields: [referenceDatasetVersionId], references: [id])
+
+  @@index([endpointId, createdAt(sort: Desc)])
+  @@map("drift_reports")
+}
+
+enum EvaluationStatus {
+  COMPLETED
+  FAILED
+}
+
+/// Candidate vs baseline on a held-out dataset version, judged by the project's policy (FR-32).
+model EvaluationReport {
+  id                 String           @id @default(uuid()) @db.Uuid
+  orgId              String           @map("org_id") @db.Uuid
+  modelId            String           @map("model_id") @db.Uuid
+  candidateVersionId String           @map("candidate_version_id") @db.Uuid
+  /// The champion at evaluation time (null when the model had none).
+  baselineVersionId  String?          @map("baseline_version_id") @db.Uuid
+  datasetVersionId   String           @map("dataset_version_id") @db.Uuid
+  status             EvaluationStatus
+  /// { candidate, baseline, deltas } (accuracy, f1, rocAuc, logLoss, rows)
+  metrics            Json             @default("{}")
+  policy             Json
+  /// [{ rule, passed, detail }]
+  checks             Json             @default("[]")
+  passed             Boolean          @default(false)
+  failureDetail      String?          @map("failure_detail")
+  requestedById      String           @map("requested_by_id") @db.Uuid
+  createdAt          DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  org        Organization     @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  model      RegisteredModel  @relation("ModelEvaluations", fields: [modelId], references: [id], onDelete: Cascade)
+  candidate  ModelVersion     @relation("EvaluationCandidate", fields: [candidateVersionId], references: [id])
+  baseline   ModelVersion?    @relation("EvaluationBaseline", fields: [baselineVersionId], references: [id])
+  dataset    DatasetVersion   @relation(fields: [datasetVersionId], references: [id])
+  championOf RegisteredModel? @relation("ChampionEvaluation")
+
+  @@index([modelId, createdAt(sort: Desc)])
+  @@map("evaluation_reports")
 }

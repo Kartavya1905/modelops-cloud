@@ -5,6 +5,7 @@ import { APP_CONFIG, type AppConfig } from '../../config/config';
 import type { ModelVersion, Prisma, ValidationResult } from '../../generated/prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { MlflowClient, MlflowError } from '../mlflow/mlflow.client';
+import { DatasetsService } from '../registry/datasets';
 
 export const MAX_MODEL_BYTES = 100 * 1024 * 1024;
 export const MAX_JSON_BYTES = 1024 * 1024;
@@ -51,6 +52,7 @@ export class ValidationService {
     private readonly store: ArtifactStore,
     private readonly mlflow: MlflowClient,
     private readonly audit: AuditService,
+    private readonly datasets: DatasetsService,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
 
@@ -161,6 +163,11 @@ export class ValidationService {
         sizeBytes: model.size,
       },
     });
+    // M7: also store the training data the run reported (verified by its SHA-256), so this
+    // version can be drift-monitored once deployed. Best effort; never fails validation.
+    if (updated.trainingDatasetVersionId && updated.mlflowRunId) {
+      await this.datasets.ingestFromRun(updated.trainingDatasetVersionId, updated.mlflowRunId);
+    }
     return { version: updated };
   }
 

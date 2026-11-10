@@ -17,6 +17,8 @@ export const DP = {
   routingChannel: 'mo:routing:changed',
   apiKeyPrefix: 'mo:apikey:',
   apiKeyChannel: 'mo:apikeys:changed',
+  /** M7: prediction + feedback events from the gateway (apps/gateway/src/events.ts) */
+  eventsStream: 'mo:events',
 } as const;
 
 export interface RoutedRevision {
@@ -38,6 +40,7 @@ export interface RoutedEndpoint {
   projectId: string;
   slug: string;
   rateLimitRps: number;
+  captureInputs: boolean;
   /** null: the endpoint exists but nothing is READY (the gateway answers 503, not 404). */
   revision: RoutedRevision | null;
 }
@@ -96,6 +99,7 @@ export class DataPlanePublisher {
         projectId: e.projectId,
         slug: e.slug,
         rateLimitRps: e.rateLimitRps,
+        captureInputs: e.captureInputs,
         revision:
           rev && sig
             ? {

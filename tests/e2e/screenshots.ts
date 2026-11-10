@@ -1,9 +1,10 @@
-// Captures README/demo screenshots (M2-M6) from a running stack, in light and dark mode.
+// Captures README/demo screenshots (M2-M7) from a running stack, in light and dark mode.
 //   pnpm --filter @modelops/e2e screenshots      (writes docs/images/m*.png)
 // Uses a fresh throwaway account each run; nothing here is a real credential.
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromium, type Page } from '@playwright/test';
 
@@ -12,6 +13,30 @@ const OUT = join(import.meta.dirname, '..', '..', 'docs', 'images');
 const ML_DIR = join(import.meta.dirname, '..', '..', 'ml');
 const BUNDLES = join(import.meta.dirname, '..', 'fixtures', 'bundles');
 const password = `demo-${randomUUID()}`;
+const TMP = mkdtempSync(join(tmpdir(), 'mo-shots-'));
+
+/** Seeded churn rows from the platform's generator (ml/modelops_ml/datasets.py). */
+function churnRows(args: string[]): void {
+  execFileSync(
+    'uv',
+    ['run', '--directory', ML_DIR, 'python', '-m', 'modelops_ml.datasets', ...args],
+    {
+      stdio: 'pipe',
+    },
+  );
+}
+
+/** Journey J3: 400 predictions of one kind plus their true labels (scripts/demo-drift.mjs). */
+function demoDrift(key: string, phase: string, seed: string): void {
+  execFileSync(
+    process.execPath,
+    [
+      join(import.meta.dirname, '..', '..', 'scripts', 'demo-drift.mjs'),
+      ...['--endpoint', 'churn-staging', '--key', key, '--phase', phase, '--seed', seed],
+    ],
+    { stdio: 'pipe' },
+  );
+}
 
 /** Toasts are transient: wait until none is on screen so they never cover the shot. */
 async function noToasts(page: Page): Promise<void> {
@@ -211,6 +236,86 @@ async function main(): Promise<void> {
     await page.getByRole('link', { name: 'Overview' }).click();
     await page.getByRole('heading', { name: 'Overview' }).waitFor();
     await shot(page, `m6-overview${suffix}`);
+
+    // ---- M7: held-out data, evaluation gate, input capture, drift + measured performance --
+    await page.getByRole('link', { name: 'Projects' }).click();
+    await page.getByRole('link', { name: 'Customer churn' }).click();
+    const holdout = join(TMP, `holdout${suffix}.csv`);
+    churnRows(['--rows', '2000', '--seed', '11', '--out', holdout]);
+    await page.getByRole('button', { name: 'Upload dataset' }).click();
+    const ds = page.getByRole('dialog', { name: 'Upload a dataset' });
+    await ds.getByLabel('Name').fill('churn-holdout');
+    await ds.getByLabel('Version').fill('seed11-n2000');
+    await ds.getByLabel('CSV file').setInputFiles(holdout);
+    await ds.getByRole('button', { name: 'Upload' }).click();
+    await page.getByRole('row', { name: /churn-holdout.*Stored/ }).waitFor();
+    await noToasts(page);
+    await page.getByRole('heading', { name: 'Datasets' }).scrollIntoViewIfNeeded();
+    await shot(page, `m7-datasets${suffix}`);
+
+    // (the runs table above also links "Churn classifier v1", to the version page)
+    await page.getByRole('link', { name: 'Churn classifier v1', exact: true }).first().click();
+    await page.getByRole('link', { name: 'Churn classifier', exact: true }).click();
+    await page.getByRole('heading', { name: 'Churn classifier', exact: true }).waitFor();
+    await page.getByLabel('Held-out dataset').selectOption({ label: 'churn-holdout seed11-n2000' });
+    await page.getByRole('button', { name: 'Evaluate' }).click();
+    const report = page.getByRole('list', { name: 'Evaluation reports' }).getByRole('listitem');
+    await report
+      .getByText(/Gate (passed|failed)/)
+      .first()
+      .waitFor({ timeout: 60_000 });
+    // Whatever the real model scores: crown it only if it actually passed the gate.
+    const crown = report.first().getByRole('button', { name: 'Make champion' });
+    if (await crown.count()) {
+      await crown.click();
+      await page.getByRole('row', { name: /v1.*Champion/ }).waitFor();
+    }
+    await noToasts(page);
+    await page.getByRole('heading', { name: 'Evaluations' }).scrollIntoViewIfNeeded();
+    await shot(page, `m7-evaluation${suffix}`);
+
+    await page.getByRole('link', { name: 'Customer churn' }).click();
+    await page.getByRole('link', { name: 'Churn staging' }).click();
+    await page.getByLabel('Capture inputs for drift detection').click();
+    await page
+      .getByLabel('Capture inputs for drift detection')
+      .and(page.locator(':checked'))
+      .waitFor();
+    // The worker stores captures a moment after the gateway answers: retry the check until the
+    // report covers every captured request so far (400, then 800).
+    const checkDrift = async (requests: number) => {
+      for (let attempt = 0; attempt < 20; attempt++) {
+        await page.waitForTimeout(3_000);
+        const answer = page.waitForResponse(
+          (r) => r.url().endsWith('/drift-reports') && r.request().method() === 'POST',
+          { timeout: 120_000 },
+        );
+        await page.getByRole('button', { name: 'Run drift check' }).click();
+        const r = await answer;
+        if (r.ok() && ((await r.json()) as { sampleCount: number }).sampleCount >= requests) break;
+      }
+      await noToasts(page);
+    };
+    demoDrift(key, 'normal', '13');
+    await checkDrift(400);
+    demoDrift(key, 'data', '14');
+    await checkDrift(800);
+    demoDrift(key, 'concept', '15'); // same inputs, flipped labels: performance drops, not drift
+    // Wait until the worker has stored all 3 x 400 labels, then capture the whole panel.
+    const labelled = page.locator('[data-perf="Labelled"]');
+    for (let attempt = 0; attempt < 30; attempt++) {
+      await page.reload();
+      await labelled.waitFor();
+      if ((await labelled.textContent())?.startsWith('1,200')) break;
+      await page.waitForTimeout(2_000);
+    }
+    await page.waitForLoadState('networkidle');
+    await noToasts(page);
+    await page
+      .getByRole('heading', { name: 'Data drift' })
+      .locator('xpath=ancestor::div[contains(@class, "lg:grid-cols-2")][1]')
+      .screenshot({ path: join(OUT, `m7-monitoring${suffix}.png`) });
+    console.log(`screenshot: docs/images/m7-monitoring${suffix}.png`);
     await page.close();
   }
   await browser.close();

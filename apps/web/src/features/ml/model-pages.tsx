@@ -37,6 +37,7 @@ import {
   metricLabel,
   VersionStatusBadge,
 } from './labels';
+import { ChampionBadge, EvaluationsCard } from '@/features/monitoring/evaluations-card';
 import { RegisterDialog } from './register-dialog';
 import { UploadDialog } from './upload-dialog';
 import { ValidationCard } from './validation-card';
@@ -124,7 +125,10 @@ export function ModelPage() {
                       </Link>
                     </Td>
                     <Td>
-                      <VersionStatusBadge status={v.status} />
+                      <span className="flex flex-wrap gap-1">
+                        <VersionStatusBadge status={v.status} />
+                        {v.id === m.championVersionId && <ChampionBadge />}
+                      </span>
                     </Td>
                     <Td className="hidden md:table-cell">
                       <FrameworkBadge framework={v.framework} />
@@ -149,6 +153,7 @@ export function ModelPage() {
           )}
         </CardContent>
       </Card>
+      <EvaluationsCard orgId={orgId} model={m} />
       {registerOpen && runs.data && (
         <RegisterDialog
           orgId={orgId}
