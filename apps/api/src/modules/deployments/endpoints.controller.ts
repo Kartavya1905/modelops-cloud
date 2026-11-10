@@ -75,8 +75,9 @@ export class EndpointsController {
     @Param('projectId', new UuidParam('Project')) projectId: string,
     @Body() dto: CreateEndpointDto,
     @Actor() actor: ActorContext,
+    @CurrentMembership() m: MembershipContext,
   ) {
-    return this.endpoints.create(orgId, projectId, dto, actor);
+    return this.endpoints.create(orgId, projectId, dto, actor, m.role);
   }
 
   @Get('endpoints/:endpointId')
@@ -129,9 +130,10 @@ export class EndpointsController {
     @Body() dto: DeployDto,
     @Headers('idempotency-key') idempotencyKey: string | undefined,
     @Actor() actor: ActorContext,
+    @CurrentMembership() m: MembershipContext,
     @Res({ passthrough: true }) res: Response,
   ): Promise<RevisionDto> {
-    const out = await this.endpoints.deploy(orgId, endpointId, dto, idempotencyKey, actor);
+    const out = await this.endpoints.deploy(orgId, endpointId, dto, idempotencyKey, actor, m.role);
     res.status(out.status);
     if (out.replayed) res.setHeader('Idempotent-Replayed', 'true');
     return out.body;

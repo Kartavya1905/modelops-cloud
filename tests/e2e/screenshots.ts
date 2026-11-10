@@ -1,4 +1,4 @@
-// Captures README/demo screenshots (M2-M7) from a running stack, in light and dark mode.
+// Captures README/demo screenshots (M2-M8) from a running stack, in light and dark mode.
 //   pnpm --filter @modelops/e2e screenshots      (writes docs/images/m*.png)
 // Uses a fresh throwaway account each run; nothing here is a real credential.
 import { execFileSync } from 'node:child_process';
@@ -316,6 +316,104 @@ async function main(): Promise<void> {
       .locator('xpath=ancestor::div[contains(@class, "lg:grid-cols-2")][1]')
       .screenshot({ path: join(OUT, `m7-monitoring${suffix}.png`) });
     console.log(`screenshot: docs/images/m7-monitoring${suffix}.png`);
+
+    // ---- M8: a healthy canary with its evidence, a broken one aborted, an approval --------
+    const traffic = (rps: string, duration: string) =>
+      execFileSync(
+        process.execPath,
+        [
+          join(import.meta.dirname, '..', '..', 'scripts', 'demo-traffic.mjs'),
+          ...['--endpoint', 'churn-staging', '--key', key, '--rps', rps, '--duration', duration],
+        ],
+        { stdio: 'pipe' },
+      );
+    const deployVersion = async (label: string, canaryShare: string) => {
+      await page.getByRole('button', { name: 'Deploy', exact: true }).click();
+      const dialog = page.getByRole('dialog', { name: /Deploy to/ });
+      await dialog.getByLabel('Version').selectOption({ label });
+      await dialog
+        .getByLabel('Rollout')
+        .selectOption({ label: 'Canary: a share of traffic first' });
+      await dialog.getByLabel('Canary share (%)').fill(canaryShare);
+      await dialog.getByRole('button', { name: 'Deploy' }).click();
+      await dialog.waitFor({ state: 'hidden' });
+      await page.getByRole('region', { name: 'Canary' }).waitFor({ timeout: 120_000 });
+    };
+    await page.getByRole('link', { name: 'Customer churn' }).click();
+    await page.getByRole('link', { name: 'Churn classifier v1', exact: true }).first().click();
+    await page.getByRole('link', { name: 'Churn classifier', exact: true }).click();
+    for (const bundle of ['sklearn', 'latent-nan']) {
+      await page.getByRole('button', { name: 'Upload bundle' }).click();
+      const up = page.getByRole('dialog', { name: 'Upload a bundle' });
+      await up.getByLabel('model.onnx').setInputFiles(join(BUNDLES, bundle, 'model.onnx'));
+      await up.getByLabel('signature.json').setInputFiles(join(BUNDLES, bundle, 'signature.json'));
+      await up
+        .getByLabel('golden_examples.json')
+        .setInputFiles(join(BUNDLES, bundle, 'golden_examples.json'));
+      await up.getByRole('button', { name: 'Upload and validate' }).click();
+      await page.getByText('Passed all checks').waitFor({ timeout: 90_000 });
+      await page.getByRole('link', { name: 'Churn classifier', exact: true }).click();
+    }
+    await page.getByRole('link', { name: 'Customer churn' }).click();
+    await page.getByRole('link', { name: 'Churn staging' }).click();
+
+    // A healthy canary (v3) on 20 %: the analysis shows its evidence next to stable.
+    await deployVersion('v3 · scikit-learn', '20');
+    traffic('20', '30s');
+    const canaryPanel = page.getByRole('region', { name: 'Canary' });
+    for (let attempt = 0; attempt < 10; attempt++) {
+      await canaryPanel.getByRole('button', { name: 'Run check' }).click();
+      await page.waitForTimeout(3_000);
+      if (((await canaryPanel.locator('[data-canary="requests"]').textContent()) ?? '0') !== '0') {
+        break;
+      }
+    }
+    await noToasts(page);
+    await page.getByRole('heading', { name: 'Release' }).scrollIntoViewIfNeeded();
+    await shot(page, `m8-canary${suffix}`);
+    if (await canaryPanel.isVisible()) {
+      await canaryPanel.getByRole('button', { name: 'Abort canary' }).click();
+      await canaryPanel.waitFor({ state: 'hidden' });
+    }
+
+    // The broken one (v4: NaN probabilities when late_payments is 0) on 30 %: the worker's own
+    // analysis (every 15 s) aborts it while the traffic runs.
+    await deployVersion('v4 · scikit-learn', '30');
+    traffic('30', '40s');
+    await canaryPanel.waitFor({ state: 'hidden', timeout: 120_000 });
+    await page.reload();
+    await page
+      .getByText(/Canary aborted: automatic/)
+      .first()
+      .waitFor();
+    await page.getByRole('button', { name: '15m', exact: true }).click();
+    await page.waitForTimeout(11_000); // one dashboard refresh after the last scrape
+    await noToasts(page);
+    await page.screenshot({ path: join(OUT, `m8-aborted${suffix}.png`), fullPage: true });
+    console.log(`screenshot: docs/images/m8-aborted${suffix}.png`);
+
+    // Production: the deployment waits for a second Owner/Admin.
+    await page.getByRole('link', { name: 'Customer churn' }).click();
+    await page.getByRole('button', { name: 'New endpoint' }).click();
+    const create = page.getByRole('dialog');
+    await create.getByLabel('Name').fill('Churn production');
+    await create.getByLabel('Environment').selectOption('PRODUCTION');
+    await create.getByRole('button', { name: 'Create endpoint' }).click();
+    await page.getByRole('heading', { name: 'Churn production' }).waitFor();
+    await page.getByRole('button', { name: 'Deploy', exact: true }).click();
+    const prodDeploy = page.getByRole('dialog', { name: /Deploy to/ });
+    // The version that serves staging (v1), not the newest one (the broken v4).
+    const v1 = await prodDeploy
+      .getByLabel('Version')
+      .locator('option', { hasText: /^v1 ·/ })
+      .getAttribute('value');
+    await prodDeploy.getByLabel('Version').selectOption(v1 ?? '');
+    await prodDeploy.getByRole('button', { name: 'Deploy' }).click();
+    await page.locator('[data-step="AWAITING_APPROVAL"]').waitFor();
+    await page.getByRole('link', { name: 'Approvals' }).click();
+    await page.getByRole('list', { name: 'Approvals' }).waitFor();
+    await noToasts(page);
+    await shot(page, `m8-approvals${suffix}`);
     await page.close();
   }
   await browser.close();

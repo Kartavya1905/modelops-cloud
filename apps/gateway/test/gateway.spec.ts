@@ -6,6 +6,7 @@ import type { ApiKeyEntry, RoutingSnapshot } from '../src/contract.js';
 import { CircuitBreaker, RateLimiter, toMatrix } from '../src/guards.js';
 import { KeyVerifier } from '../src/keys.js';
 import { RoutingTable } from '../src/routing.js';
+import { bucketOf, fnv1a32, pickRevision } from '../src/split.js';
 
 const PEPPER = 'p'.repeat(40);
 const TOKEN = 't'.repeat(40);
@@ -16,6 +17,17 @@ const config = loadConfig({
 });
 const FEATURES = ['a', 'b', 'c'];
 const REV = '11111111-2222-3333-4444-555555555555';
+const CANARY = '99999999-8888-7777-6666-555555555555';
+const revisionOf = (id: string, modelVersion: number) => ({
+  id,
+  url: `http://mo-rev-${id}:8000`,
+  modelVersionId: `mv-${String(modelVersion)}`,
+  modelName: 'Churn',
+  modelVersion,
+  framework: 'PYTORCH_ONNX',
+  features: FEATURES,
+  classes: [0, 1],
+});
 const PROJECT = 'project-1';
 
 function makeKey(projectId = PROJECT, overrides: Partial<ApiKeyEntry> = {}) {
@@ -37,7 +49,12 @@ function makeKey(projectId = PROJECT, overrides: Partial<ApiKeyEntry> = {}) {
   return { prefix, token: `mo_${prefix}_${secret}`, entry };
 }
 
-const snapshot = (revision: boolean, rateLimitRps = 3, captureInputs = false): RoutingSnapshot => ({
+const snapshot = (
+  revision: boolean,
+  rateLimitRps = 3,
+  captureInputs = false,
+  canaryWeight = 0,
+): RoutingSnapshot => ({
   hash: revision ? 'h1' : 'h0',
   generatedAt: new Date().toISOString(),
   endpoints: {
@@ -60,6 +77,7 @@ const snapshot = (revision: boolean, rateLimitRps = 3, captureInputs = false): R
             classes: [0, 1],
           }
         : null,
+      canary: canaryWeight > 0 ? { revision: revisionOf(CANARY, 5), weight: canaryWeight } : null,
     },
   },
 });
@@ -71,6 +89,7 @@ async function setup(
     rateLimitRps?: number;
     capture?: boolean;
     sinkFails?: boolean;
+    canaryWeight?: number;
   } = {},
 ) {
   const store = new Map<string, ApiKeyEntry>();
@@ -80,7 +99,10 @@ async function setup(
     30_000,
   );
   const routing = new RoutingTable({
-    load: () => Promise.resolve(snapshot(opts.revision ?? true, opts.rateLimitRps, opts.capture)),
+    load: () =>
+      Promise.resolve(
+        snapshot(opts.revision ?? true, opts.rateLimitRps, opts.capture, opts.canaryWeight),
+      ),
   });
   await routing.refresh();
   const counts = new Map<string, number>();
@@ -528,5 +550,106 @@ describe('M7 events and feedback', () => {
         })
       ).statusCode,
     ).toBe(503);
+  });
+});
+
+describe('M8 canary routing', () => {
+  const endpoint = (weight: number) => {
+    const e = snapshot(true, 3, false, weight).endpoints[`${PROJECT}/churn`];
+    if (!e) throw new Error('fixture endpoint missing');
+    return e;
+  };
+
+  it('FNV-1a matches the reference vectors', () => {
+    expect(fnv1a32('')).toBe(0x811c9dc5);
+    expect(fnv1a32('a')).toBe(0xe40c292c);
+    expect(fnv1a32('foobar')).toBe(0xbf9cf968);
+  });
+
+  it('10 000 requests at 10% send 10% ± 1.5% to the canary', () => {
+    let canary = 0;
+    for (let i = 0; i < 10_000; i++) {
+      if (pickRevision(endpoint(10), randomBytes(16).toString('hex'))?.role === 'canary') canary++;
+    }
+    expect(canary / 10_000).toBeGreaterThanOrEqual(0.085);
+    expect(canary / 10_000).toBeLessThanOrEqual(0.115);
+  });
+
+  it('a routing key is sticky; without a canary everything is stable', () => {
+    for (const key of ['customer-1', 'customer-2', 'customer-3', 'customer-42']) {
+      const first = pickRevision(endpoint(30), key)?.role;
+      for (let i = 0; i < 50; i++) expect(pickRevision(endpoint(30), key)?.role).toBe(first);
+      expect(pickRevision(endpoint(30), key)?.role).toBe(bucketOf(key) < 30 ? 'canary' : 'stable');
+    }
+    expect(pickRevision(endpoint(0), 'anything')?.role).toBe('stable');
+  });
+
+  // Keys whose bucket is below 20 (canary) and above (stable), found deterministically.
+  const keysIn = (canary: boolean, n: number) => {
+    const out: string[] = [];
+    for (let i = 0; out.length < n; i++) {
+      if (bucketOf(`k-${String(i)}`) < 20 === canary) out.push(`k-${String(i)}`);
+    }
+    return out;
+  };
+
+  it('routes by X-Routing-Key and says which track answered', async () => {
+    const { app, store, calls } = await setup({ canaryWeight: 20, rateLimitRps: 100 });
+    const k = makeKey();
+    store.set(k.prefix, k.entry);
+    const send = (key: string) =>
+      app.inject({
+        method: 'POST',
+        url: '/v1/endpoints/churn/predict',
+        headers: { authorization: `Bearer ${k.token}`, 'x-routing-key': key },
+        payload: { inputs: [row] },
+      });
+    const [c = ''] = keysIn(true, 1);
+    const [s = ''] = keysIn(false, 1);
+    const toCanary = await send(c);
+    expect(toCanary.headers['x-traffic-role']).toBe('canary');
+    expect(toCanary.headers['x-revision-id']).toBe(CANARY);
+    expect(toCanary.json<{ model: { version: number } }>().model.version).toBe(5);
+    const toStable = await send(s);
+    expect(toStable.headers['x-traffic-role']).toBe('stable');
+    expect(calls.map((x) => x.url)).toEqual([
+      `http://mo-rev-${CANARY}:8000/v1/predict`,
+      `http://mo-rev-${REV}:8000/v1/predict`,
+    ]);
+  });
+
+  it('a broken canary fails only its own requests, then stable takes them (fallback)', async () => {
+    const okBody = JSON.stringify({ outputs: { label: [1], probabilities: [[0.25, 0.75]] } });
+    const upstream = (url: string) =>
+      Promise.resolve(
+        url.includes(CANARY)
+          ? new Response('boom', { status: 500 })
+          : new Response(okBody, { headers: { 'content-type': 'application/json' } }),
+      );
+    const { app, store, metrics } = await setup({
+      canaryWeight: 20,
+      rateLimitRps: 100,
+      upstream: upstream as unknown as typeof fetch,
+    });
+    const k = makeKey();
+    store.set(k.prefix, k.entry);
+    const send = (key: string) =>
+      app.inject({
+        method: 'POST',
+        url: '/v1/endpoints/churn/predict',
+        headers: { authorization: `Bearer ${k.token}`, 'x-routing-key': key },
+        payload: { inputs: [row] },
+      });
+    // The first 5 canary requests reach the broken model (no automatic retry: errors stay honest).
+    const canaryKeys = keysIn(true, 8);
+    const codes: number[] = [];
+    for (const key of canaryKeys) codes.push((await send(key)).statusCode);
+    expect(codes).toEqual([502, 502, 502, 502, 502, 200, 200, 200]);
+    // Stable requests never saw an error.
+    for (const key of keysIn(false, 10)) expect((await send(key)).statusCode).toBe(200);
+    const text = await metrics.registry.metrics();
+    expect(text).toMatch(
+      new RegExp(`gateway_canary_fallback_total\\{[^}]*revision="${CANARY}"[^}]*\\} 3`),
+    );
   });
 });

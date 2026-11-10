@@ -26,7 +26,9 @@ import {
   Field,
   Input,
 } from '@/components/ui/primitives';
+import { NativeSelect } from '@/components/ui/select';
 import { api, ApiError, unwrap } from '@/lib/api/client';
+import { useMembership } from '@/lib/auth/session';
 import { qk } from '@/lib/query/keys';
 import { useEndpoints } from './api';
 import { RevisionStateBadge } from './labels';
@@ -36,14 +38,17 @@ function CreateEndpointDialog({ orgId, projectId }: { orgId: string; projectId: 
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
+  const [environment, setEnvironment] = useState<'STAGING' | 'PRODUCTION'>('STAGING');
   const [error, setError] = useState<string>();
+  const role = useMembership(orgId)?.role;
+  const admin = role === 'OWNER' || role === 'ADMIN';
 
   const create = useMutation({
     mutationFn: () =>
       unwrap(
         api.POST('/api/v1/orgs/{orgId}/projects/{projectId}/endpoints', {
           params: { path: { orgId, projectId } },
-          body: { name },
+          body: { name, environment },
         }),
       ),
     meta: { silentError: true },
@@ -85,7 +90,7 @@ function CreateEndpointDialog({ orgId, projectId }: { orgId: string; projectId: 
             <DialogTitle>New endpoint</DialogTitle>
             <DialogDescription>
               A stable inference URL. Deploy validated model versions to it; clients call it with an
-              API key of this project. Staging only for now (production approvals arrive in M8).
+              API key of this project.
             </DialogDescription>
           </DialogHeader>
           <Field id="endpoint-name" label="Name" error={error}>
@@ -97,6 +102,28 @@ function CreateEndpointDialog({ orgId, projectId }: { orgId: string; projectId: 
               placeholder="Churn staging"
               aria-invalid={!!error}
             />
+          </Field>
+          <Field
+            id="endpoint-environment"
+            label="Environment"
+            hint={
+              environment === 'PRODUCTION'
+                ? 'Every deployment needs a second Owner or Admin to approve it; traffic changes are Owner/Admin only.'
+                : admin
+                  ? 'Staging: deployments start right away.'
+                  : 'Production endpoints can be created by Owners and Admins.'
+            }
+          >
+            <NativeSelect
+              id="endpoint-environment"
+              value={environment}
+              onChange={(e) => setEnvironment(e.target.value as 'STAGING' | 'PRODUCTION')}
+            >
+              <option value="STAGING">Staging</option>
+              <option value="PRODUCTION" disabled={!admin}>
+                Production
+              </option>
+            </NativeSelect>
           </Field>
           <DialogFooter>
             <Button type="submit" disabled={create.isPending}>

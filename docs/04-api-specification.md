@@ -51,7 +51,7 @@
 Cursor-based: `?limit=25&cursor=<opaque>` returns `{ "data": [...], "nextCursor": "..." | null }`. Maximum `limit` is 100.
 
 ### Idempotency
-- Required on `POST` endpoints that start asynchronous work: deploy, rollback, promote, canary. (Evaluations and drift checks run synchronously since M7 and each call appends one immutable report, so they take no key.)
+- Required on `POST` endpoints that start asynchronous work: deploy. (Evaluations and drift checks run synchronously since M7 and append one immutable report per call; release actions since M8 (canary weight, promote, abort, rollback) use `If-Match` on the endpoint instead: a retry or double click with the same ETag gets `412`, never a second action.)
 - Header: `Idempotency-Key: <uuid>`, scoped per organization and stored for 24 h.
 - Same key + same body hash → the **original response is replayed** (same status, same body).
 - Same key + different body → `409 IDEMPOTENCY_KEY_REUSED`.
@@ -122,23 +122,25 @@ Role abbreviations: **O** Owner, **A** Admin, **E** ML Engineer, **V** Viewer. "
 | GET / POST | `/orgs/{orgId}/projects/{projectId}/endpoints` | Any / O, A, E | List / create endpoint |
 | GET | `/orgs/{orgId}/endpoints/{endpointId}` | Any | Detail: traffic split, current revisions, ETag |
 | PATCH | `/orgs/{orgId}/endpoints/{endpointId}` | O, A, E | Settings `{ captureInputs?, rateLimitRps? }` + `If-Match` (M7). Environment-based restrictions for production arrive with approvals (M9) |
-| POST | `/orgs/{orgId}/endpoints/{endpointId}/revisions` | O, A, E | **Deploy** `{ modelVersionId, resources? }` + `Idempotency-Key` → `202` with revision |
+| POST | `/orgs/{orgId}/endpoints/{endpointId}/revisions` | O, A, E (staging) / O, A (prod) | **Deploy** `{ modelVersionId, resources?, strategy?: IMMEDIATE \| CANARY, canaryWeight?: 0-50 }` + `Idempotency-Key` → `202` with revision. PRODUCTION: `AWAITING_APPROVAL`. CANARY needs a READY stable revision with the same input features (`409 NO_STABLE_REVISION` / `SIGNATURE_MISMATCH`); one canary at a time (`409 CANARY_IN_PROGRESS`) |
 | GET | `/orgs/{orgId}/endpoints/{endpointId}/revisions` | Any | Revision history |
 | GET | `/orgs/{orgId}/revisions/{revisionId}` | Any | Revision detail + current state |
 | GET | `/orgs/{orgId}/revisions/{revisionId}/events` | Any | Timeline events |
 | POST | `/orgs/{orgId}/revisions/{revisionId}/cancel` | O, A, E (own) | Cancel before `READY` |
-| PUT | `/orgs/{orgId}/endpoints/{endpointId}/canary` | O, A (prod), E (staging) | `{ revisionId, weight }` + `If-Match` |
-| POST | `/orgs/{orgId}/endpoints/{endpointId}/promote` | O, A (prod), E (staging) | Canary → stable |
-| POST | `/orgs/{orgId}/endpoints/{endpointId}/rollback` | O, A (prod), E (staging) | `{ targetRevisionId? }`, defaults to the last healthy one |
+| PUT | `/orgs/{orgId}/endpoints/{endpointId}/canary` | O, A (prod), E (staging) | `{ weight: 0-50 }` + `If-Match` (M8). The canary is the endpoint's one canary revision |
+| POST | `/orgs/{orgId}/endpoints/{endpointId}/canary/checks` | O, A (prod), E (staging) | Run the canary analysis now (the worker also runs it every 15 s); a FAIL aborts the canary (M8) |
+| POST | `/orgs/{orgId}/endpoints/{endpointId}/canary/abort` | O, A (prod), E (staging) | Weight → 0, canary → `DRAINING`, + `If-Match` (M8) |
+| POST | `/orgs/{orgId}/endpoints/{endpointId}/promote` | O, A (prod), E (staging) | Canary → stable, + `If-Match`. Only after a passing check (`409 CANARY_NOT_ELIGIBLE`); the old stable drains, warm (M8) |
+| POST | `/orgs/{orgId}/endpoints/{endpointId}/rollback` | O, A (prod), E (staging) | `{ targetRevisionId? }` + `If-Match`; defaults to the last revision that served as stable (an aborted canary never qualifies). `200 { path: fast }`: it was warm and serves now. `202 { path: slow }`: it was retired, a new revision of its version deploys without a new approval. Aborts a running canary (M8) |
 | GET | `/orgs/{orgId}/endpoints/{endpointId}/playground` | Any | Signature features + up to 5 golden examples of the serving version (M6) |
 | POST | `/orgs/{orgId}/endpoints/{endpointId}/playground/predict` | Any | Playground call: the API forwards it to the gateway's token-protected internal route, so it gets the same validation and metrics (`source="playground"`), 5 req/s per user. No API-key secret is stored (M6) |
 
 ### Approvals
 | Method | Path | Role | Description |
 |---|---|---|---|
-| GET | `/orgs/{orgId}/approvals?status=PENDING` | Any | Approval queue |
-| POST | `/orgs/{orgId}/approvals/{approvalId}/approve` | O, A (not the requester) | Approve → revision proceeds to `QUEUED` |
-| POST | `/orgs/{orgId}/approvals/{approvalId}/reject` | O, A | Reject with reason → revision `CANCELLED` |
+| GET | `/orgs/{orgId}/approvals?status=PENDING` | Any | Approval queue, newest first; `canDecide` says whether the caller may decide (M8) |
+| POST | `/orgs/{orgId}/approvals/{approvalId}/approve` | O, A (not the requester) | `{ reason? }` → revision `QUEUED` (outbox). `403 SELF_APPROVAL`, `409 APPROVAL_DECIDED` / `APPROVAL_EXPIRED` (M8) |
+| POST | `/orgs/{orgId}/approvals/{approvalId}/reject` | O, A (not the requester) | `{ reason }` (required) → revision `CANCELLED` (`APPROVAL_REJECTED`). Undecided approvals expire after 24 h (`APPROVAL_EXPIRED`) (M8) |
 
 ### Monitoring
 | Method | Path | Role | Description |
@@ -171,7 +173,7 @@ Role abbreviations: **O** Owner, **A** Admin, **E** ML Engineer, **V** Viewer. "
 POST /v1/endpoints/churn-prod/predict
 Authorization: Bearer mo_7KQ2X9AB_<secret>
 Content-Type: application/json
-X-Routing-Key: customer-1234          (optional; sticky canary assignment)
+X-Routing-Key: customer-1234          (optional; sticky canary assignment, 1-128 printable ASCII)
 
 {
   "inputs": [
@@ -191,7 +193,8 @@ X-Routing-Key: customer-1234          (optional; sticky canary assignment)
 }
 ```
 
-- Response headers: `X-Model-Version`, `X-Revision-Id`, `X-Request-Id`.
+- Response headers: `X-Model-Version`, `X-Revision-Id`, `X-Request-Id`, and `X-Traffic-Role: stable | canary` (M8).
+- Canary split (M8): `fnv1a(X-Routing-Key ?? request id) % 100 < weight` goes to the canary. If the canary's circuit is open, stable answers instead (counted as `gateway_canary_fallback_total`, which the analysis treats as a canary failure). The gateway never retries a failed request on its own.
 - Inputs are validated against the model signature at the gateway: unknown or missing fields, wrong types, or batch size over 64 → `400`.
 - Errors use the same Problem Details format.
 - Inputs are **never** logged. They are captured for drift only when the endpoint has `captureInputs=true`.

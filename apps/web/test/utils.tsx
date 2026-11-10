@@ -14,6 +14,7 @@ const READ: Permission[] = [
   'project:read',
   'experiment:read',
   'model:read',
+  'approval:read',
 ];
 const WRITE: Permission[] = [
   ...READ,
@@ -21,6 +22,7 @@ const WRITE: Permission[] = [
   'project:update',
   'model:create',
   'model:register',
+  'release:manage',
 ];
 const ADMIN: Permission[] = [
   ...WRITE,
@@ -28,6 +30,7 @@ const ADMIN: Permission[] = [
   'invitation:create',
   'project:archive',
   'audit:read',
+  'approval:decide',
 ];
 const PERMS: Record<Role, Permission[]> = {
   OWNER: ADMIN,

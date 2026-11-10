@@ -172,6 +172,15 @@ flowchart LR
 - **Rollback (fast path):** the previous revision is still `DRAINING` and warm. One transaction moves it to `READY`, makes it stable, moves the current revision to `DRAINING`, and publishes the routing snapshot. Target: under 10 s from click to traffic shift (to be measured).
 - **Rollback (slow path):** if the previous revision is already `RETIRED`, a new revision is created from the same validated model version and deployed through the normal pipeline.
 
+### As built (M8)
+
+- **Strategy per deploy:** `IMMEDIATE` (default, the M5 blue/green switch) or `CANARY` with an initial share of 0–50 %. A canary becomes `READY` *next to* the stable revision (`endpoints.canary_revision_id`, `canary_weight`). One canary at a time, and it must accept the same input features as stable.
+- **Weights 0–50 %** (CHECK constraints). 0 keeps the canary warm without traffic. More than half the traffic is a promotion, not a canary.
+- **Analysis:** `minRequests` 200, `minDurationSeconds` 300, `maxErrorRateIncrease` 0.01, `maxLatencyRatio` 1.25 (per project, `projects.canary_policy`, snapshotted into each `canary_checks` row). It uses exact counts (counter differences, as in M6) for `source="api"` traffic since the canary started, plus p95 from the latency histogram. Canary fallbacks count as canary failures. **Bad news acts fast:** with `minRequests`, a breach FAILS at once and aborts the canary. **Good news needs patience:** a PASS also needs `minDurationSeconds`. Promote requires the latest check to be a PASS.
+- **Release actions use `If-Match`** on the endpoint (not an Idempotency-Key). Each is one transaction that locks the endpoint row, moves revisions by CAS and bumps `row_version`; then the full snapshot is published.
+- **Rollback targets** are revisions that served as *stable* (`stable_at`), newest first. An aborted canary never qualifies. Measured fast path: **85–87 ms** from the request to the gateway answering with the old revision (integration test, local Docker). That is far under the 10 s target.
+- **Approvals:** see §2. A production revision skips `AWAITING_APPROVAL` only for a slow rollback of a version that already served there (`rollback_of_id`, checked by a trigger). Undecided approvals expire after 24 h (`CANCELLED`, `APPROVAL_EXPIRED`).
+
 ## 7. Consistency guarantees (what we promise, and what we don't)
 
 | Guarantee | Statement |

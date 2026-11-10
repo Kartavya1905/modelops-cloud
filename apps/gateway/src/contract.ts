@@ -31,6 +31,8 @@ export interface RoutedEndpoint {
   /** M7: also record request inputs (opt-in) for drift detection */
   captureInputs: boolean;
   revision: RoutedRevision | null;
+  /** M8: a READY canary taking `weight` percent (1-50) of requests; null when there is none. */
+  canary: { revision: RoutedRevision; weight: number } | null;
 }
 
 export interface RoutingSnapshot {

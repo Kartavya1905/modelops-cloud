@@ -74,6 +74,8 @@ model User {
   endpointsCreated    Endpoint[]
   revisionsRequested  DeploymentRevision[]
   apiKeysCreated      ApiKey[]
+  approvalsRequested  Approval[]           @relation("ApprovalRequestedBy")
+  approvalsDecided    Approval[]           @relation("ApprovalDecidedBy")
 
   @@map("users")
 }
@@ -118,6 +120,8 @@ model Organization {
   apiKeys          ApiKey[]
   evaluations      EvaluationReport[]
   driftReports     DriftReport[]
+  approvals        Approval[]
+  canaryChecks     CanaryCheck[]
 
   @@map("organizations")
 }
@@ -179,6 +183,8 @@ model Project {
   apiKeys          ApiKey[]
   /// Evaluation gate thresholds (M7), snapshotted into every evaluation report.
   evaluationPolicy Json              @default("{\"minRocAuc\": 0.7, \"maxRocAucDrop\": 0.01, \"maxLogLossIncrease\": 0.02}") @map("evaluation_policy")
+  /// Canary analysis thresholds (M8, docs/05 §6), snapshotted into every canary check.
+  canaryPolicy     Json              @default("{\"minDurationSeconds\": 300, \"minRequests\": 200, \"maxErrorRateIncrease\": 0.01, \"maxLatencyRatio\": 1.25}") @map("canary_policy")
 
   @@unique([orgId, slug])
   @@index([orgId, createdAt(sort: Desc)])
@@ -381,8 +387,14 @@ model Endpoint {
   rateLimitRps     Int                 @default(50) @map("rate_limit_rps")
   /// M7, opt-in: also store request inputs (7 days) for drift detection. Off by default (privacy).
   captureInputs    Boolean             @default(false) @map("capture_inputs")
-  /// Optimistic-lock counter (ETag) for traffic settings (used from M8).
+  /// Optimistic-lock counter (ETag) for traffic settings: capture, rate limit, canary weight.
   rowVersion       Int                 @default(0) @map("row_version")
+  /// M8: the revision receiving a share of traffic next to the stable one (at most one).
+  canaryRevisionId String?             @unique @map("canary_revision_id") @db.Uuid
+  /// Percent of requests (0-50) routed to the canary; 0 keeps it warm without traffic.
+  canaryWeight     Int                 @default(0) @map("canary_weight")
+  /// When the current canary started taking traffic: the analysis window starts here.
+  canaryStartedAt  DateTime?           @map("canary_started_at") @db.Timestamptz(3)
   createdById      String              @map("created_by_id") @db.Uuid
   createdAt        DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt        DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -391,7 +403,9 @@ model Endpoint {
   project        Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
   createdBy      User                 @relation(fields: [createdById], references: [id])
   stableRevision DeploymentRevision?  @relation("StableRevision", fields: [stableRevisionId], references: [id])
+  canaryRevision DeploymentRevision?  @relation("CanaryRevision", fields: [canaryRevisionId], references: [id])
   revisions      DeploymentRevision[] @relation("EndpointRevisions")
+  canaryChecks   CanaryCheck[]
   predictions    PredictionRecord[]
   driftReports   DriftReport[]
 
@@ -402,40 +416,52 @@ model Endpoint {
 
 /// One attempt to run one validated model version behind an endpoint (docs/05).
 model DeploymentRevision {
-  id                 String        @id @default(uuid()) @db.Uuid
-  orgId              String        @map("org_id") @db.Uuid
-  endpointId         String        @map("endpoint_id") @db.Uuid
-  modelVersionId     String        @map("model_version_id") @db.Uuid
-  revisionNumber     Int           @map("revision_number")
-  state              RevisionState @default(REQUESTED)
+  id                 String          @id @default(uuid()) @db.Uuid
+  orgId              String          @map("org_id") @db.Uuid
+  endpointId         String          @map("endpoint_id") @db.Uuid
+  modelVersionId     String          @map("model_version_id") @db.Uuid
+  revisionNumber     Int             @map("revision_number")
+  state              RevisionState   @default(REQUESTED)
   /// Compare-and-set counter: every transition is `WHERE state = $from AND state_version = $v`.
-  stateVersion       Int           @default(0) @map("state_version")
+  stateVersion       Int             @default(0) @map("state_version")
   /// Every non-terminal state has a deadline, so nothing stays in progress forever.
-  stateDeadlineAt    DateTime?     @map("state_deadline_at") @db.Timestamptz(3)
+  stateDeadlineAt    DateTime?       @map("state_deadline_at") @db.Timestamptz(3)
   /// `{ "cpus": 0.5, "memoryMb": 512 }`
-  resources          Json          @default("{\"cpus\": 0.5, \"memoryMb\": 512}")
-  failureCode        String?       @map("failure_code")
-  failureDetail      String?       @map("failure_detail")
+  resources          Json            @default("{\"cpus\": 0.5, \"memoryMb\": 512}")
+  failureCode        String?         @map("failure_code")
+  failureDetail      String?         @map("failure_detail")
   /// Container name (`mo-rev-<id>`) or pod name.
-  runtimeRef         String?       @map("runtime_ref")
-  readyAt            DateTime?     @map("ready_at") @db.Timestamptz(3)
+  runtimeRef         String?         @map("runtime_ref")
+  readyAt            DateTime?       @map("ready_at") @db.Timestamptz(3)
   /// DRAINING: keep the container warm until this time, then retire it.
-  drainUntil         DateTime?     @map("drain_until") @db.Timestamptz(3)
-  retiredAt          DateTime?     @map("retired_at") @db.Timestamptz(3)
+  drainUntil         DateTime?       @map("drain_until") @db.Timestamptz(3)
+  retiredAt          DateTime?       @map("retired_at") @db.Timestamptz(3)
   /// Self-healing budget: at most 3 restarts in a 10-minute window, then FAILED.
-  restartCount       Int           @default(0) @map("restart_count")
-  restartWindowStart DateTime?     @map("restart_window_start") @db.Timestamptz(3)
-  previousRevisionId String?       @map("previous_revision_id") @db.Uuid
-  requestedById      String        @map("requested_by_id") @db.Uuid
-  createdAt          DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt          DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+  restartCount       Int             @default(0) @map("restart_count")
+  restartWindowStart DateTime?       @map("restart_window_start") @db.Timestamptz(3)
+  previousRevisionId String?         @map("previous_revision_id") @db.Uuid
+  /// M8: IMMEDIATE replaces the stable revision once READY (blue/green, M5); CANARY starts
+  /// next to it with `canaryWeight` percent of the traffic.
+  strategy           RolloutStrategy @default(IMMEDIATE)
+  canaryWeight       Int?            @map("canary_weight")
+  /// Last time this revision became the stable one (deploy, promote, rollback). Only revisions
+  /// that served as stable are rollback targets: an aborted canary never is.
+  stableAt           DateTime?       @map("stable_at") @db.Timestamptz(3)
+  /// Set when this revision redeploys an earlier one (slow rollback): no new approval needed.
+  rollbackOfId       String?         @map("rollback_of_id") @db.Uuid
+  requestedById      String          @map("requested_by_id") @db.Uuid
+  createdAt          DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   org          Organization      @relation(fields: [orgId], references: [id], onDelete: Cascade)
   endpoint     Endpoint          @relation("EndpointRevisions", fields: [endpointId], references: [id], onDelete: Cascade)
   modelVersion ModelVersion      @relation(fields: [modelVersionId], references: [id])
   requestedBy  User              @relation(fields: [requestedById], references: [id])
   stableFor    Endpoint?         @relation("StableRevision")
+  canaryFor    Endpoint?         @relation("CanaryRevision")
   events       DeploymentEvent[]
+  approval     Approval?
+  canaryChecks CanaryCheck[]
 
   @@unique([endpointId, revisionNumber])
   @@index([state, stateDeadlineAt])
@@ -613,4 +639,71 @@ model EvaluationReport {
 
   @@index([modelId, createdAt(sort: Desc)])
   @@map("evaluation_reports")
+}
+
+// ============================================================ M8: canary releases and approvals
+
+enum RolloutStrategy {
+  IMMEDIATE
+  CANARY
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+/// Four-eyes approval of a production deployment (FR-41). The approver must be an Owner/Admin
+/// other than the requester: enforced by the API and by a CHECK constraint.
+model Approval {
+  id            String         @id @default(uuid()) @db.Uuid
+  orgId         String         @map("org_id") @db.Uuid
+  revisionId    String         @unique @map("revision_id") @db.Uuid
+  requestedById String         @map("requested_by_id") @db.Uuid
+  status        ApprovalStatus @default(PENDING)
+  decidedById   String?        @map("decided_by_id") @db.Uuid
+  reason        String?
+  expiresAt     DateTime       @map("expires_at") @db.Timestamptz(3)
+  decidedAt     DateTime?      @map("decided_at") @db.Timestamptz(3)
+  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  org         Organization       @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  revision    DeploymentRevision @relation(fields: [revisionId], references: [id], onDelete: Cascade)
+  requestedBy User               @relation("ApprovalRequestedBy", fields: [requestedById], references: [id])
+  decidedBy   User?              @relation("ApprovalDecidedBy", fields: [decidedById], references: [id])
+
+  @@index([orgId, status, createdAt(sort: Desc)])
+  @@map("approvals")
+}
+
+enum CanaryVerdict {
+  PASS
+  FAIL
+  INCONCLUSIVE
+}
+
+/// One canary analysis (worker scheduler or on demand): canary vs stable from gateway metrics.
+model CanaryCheck {
+  id         String        @id @default(uuid()) @db.Uuid
+  orgId      String        @map("org_id") @db.Uuid
+  endpointId String        @map("endpoint_id") @db.Uuid
+  revisionId String        @map("revision_id") @db.Uuid
+  verdict    CanaryVerdict
+  /// { canary: { requests, errors, errorRate, p95Ms }, stable: {...}, windowSeconds, fallbacks }
+  metrics    Json
+  /// [{ rule, passed, detail }]
+  checks     Json          @default("[]")
+  policy     Json
+  /// true when this check aborted the canary
+  aborted    Boolean       @default(false)
+  createdAt  DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  org      Organization       @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  endpoint Endpoint           @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+  revision DeploymentRevision @relation(fields: [revisionId], references: [id], onDelete: Cascade)
+
+  @@index([revisionId, createdAt(sort: Desc)])
+  @@map("canary_checks")
 }

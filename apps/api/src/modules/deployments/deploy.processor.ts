@@ -199,8 +199,11 @@ export class DeployProcessor {
   }
 
   /**
-   * VERIFYING -> READY and the traffic switch in ONE transaction (M5 rollout: the new revision
-   * replaces the stable one only after it has proved itself; the old one drains, still warm).
+   * VERIFYING -> READY and the traffic switch in ONE transaction. IMMEDIATE (M5): the new revision
+   * replaces the stable one only after it has proved itself; the old one drains, still warm.
+   * CANARY (M8): it starts next to the stable one with its requested share, and the canary
+   * analysis decides whether it may be promoted. With no healthy stable to compare with (it
+   * failed meanwhile), a canary simply becomes the stable revision.
    */
   private async markReady(rev: DeploymentRevision, goldenRows: number): Promise<void> {
     const ready = await this.prisma.$transaction(async (tx) => {
@@ -212,6 +215,44 @@ export class DeployProcessor {
       if (!moved) return null;
       await tx.$queryRaw`SELECT id FROM endpoints WHERE id = ${rev.endpointId}::uuid FOR UPDATE`;
       const endpoint = await tx.endpoint.findUniqueOrThrow({ where: { id: rev.endpointId } });
+      const stable = endpoint.stableRevisionId
+        ? await tx.deploymentRevision.findUnique({ where: { id: endpoint.stableRevisionId } })
+        : null;
+      if (
+        rev.strategy === 'CANARY' &&
+        stable?.state === 'READY' &&
+        !endpoint.canaryRevisionId &&
+        stable.id !== rev.id
+      ) {
+        const weight = rev.canaryWeight ?? 0;
+        await tx.endpoint.update({
+          where: { id: rev.endpointId },
+          data: {
+            canaryRevisionId: rev.id,
+            canaryWeight: weight,
+            canaryStartedAt: weight > 0 ? new Date() : null,
+            rowVersion: { increment: 1 },
+          },
+        });
+        await tx.deploymentEvent.create({
+          data: {
+            orgId: rev.orgId,
+            revisionId: rev.id,
+            fromState: 'READY',
+            toState: 'READY',
+            message: `Canary: receiving ${String(weight)}% of traffic next to revision ${String(stable.revisionNumber)}`,
+            metadata: { canaryWeight: weight },
+          },
+        });
+        await this.audit.record(tx, SYSTEM, {
+          orgId: rev.orgId,
+          action: 'deployment.canary_started',
+          targetType: 'deployment_revision',
+          targetId: rev.id,
+          metadata: { endpointId: rev.endpointId, revision: rev.revisionNumber, weight },
+        });
+        return moved;
+      }
       let replaced: string | null = null;
       if (endpoint.stableRevisionId && endpoint.stableRevisionId !== rev.id) {
         const old = await tx.deploymentRevision.findUniqueOrThrow({
@@ -229,6 +270,7 @@ export class DeployProcessor {
         where: { id: rev.endpointId },
         data: { stableRevisionId: rev.id, rowVersion: { increment: 1 } },
       });
+      await tx.deploymentRevision.update({ where: { id: rev.id }, data: { stableAt: new Date() } });
       await this.audit.record(tx, SYSTEM, {
         orgId: rev.orgId,
         action: 'deployment.ready',
@@ -278,6 +320,16 @@ export class DeployProcessor {
       await tx.endpoint.updateMany({
         where: { id: rev.endpointId, stableRevisionId: rev.id },
         data: { stableRevisionId: null, rowVersion: { increment: 1 } },
+      });
+      // ...nor the canary (docs/05: a failed canary's weight goes to 0).
+      await tx.endpoint.updateMany({
+        where: { id: rev.endpointId, canaryRevisionId: rev.id },
+        data: {
+          canaryRevisionId: null,
+          canaryWeight: 0,
+          canaryStartedAt: null,
+          rowVersion: { increment: 1 },
+        },
       });
       await this.audit.record(tx, SYSTEM, {
         orgId: rev.orgId,

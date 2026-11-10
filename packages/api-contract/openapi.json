@@ -2136,6 +2136,445 @@
         ]
       }
     },
+    "/api/v1/orgs/{orgId}/endpoints/{endpointId}/canary": {
+      "put": {
+        "operationId": "Releases_setWeight",
+        "parameters": [
+          {
+            "name": "orgId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "endpointId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "description": "ETag from GET /endpoints/{id} (W/\"<rowVersion>\"); a stale one is 412",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CanaryWeightDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EndpointDetailDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "releases"
+        ]
+      }
+    },
+    "/api/v1/orgs/{orgId}/endpoints/{endpointId}/canary/abort": {
+      "post": {
+        "operationId": "Releases_abort",
+        "parameters": [
+          {
+            "name": "orgId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "endpointId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "description": "ETag from GET /endpoints/{id} (W/\"<rowVersion>\"); a stale one is 412",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EndpointDetailDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "releases"
+        ]
+      }
+    },
+    "/api/v1/orgs/{orgId}/endpoints/{endpointId}/promote": {
+      "post": {
+        "operationId": "Releases_promote",
+        "parameters": [
+          {
+            "name": "orgId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "endpointId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "description": "ETag from GET /endpoints/{id} (W/\"<rowVersion>\"); a stale one is 412",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EndpointDetailDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "releases"
+        ]
+      }
+    },
+    "/api/v1/orgs/{orgId}/endpoints/{endpointId}/rollback": {
+      "post": {
+        "operationId": "Releases_rollback",
+        "parameters": [
+          {
+            "name": "orgId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "endpointId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "description": "ETag from GET /endpoints/{id} (W/\"<rowVersion>\"); a stale one is 412",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RollbackDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Fast rollback: traffic has moved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RollbackResultDto"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Slow rollback: redeploying",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RollbackResultDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "releases"
+        ]
+      }
+    },
+    "/api/v1/orgs/{orgId}/endpoints/{endpointId}/canary/checks": {
+      "post": {
+        "operationId": "CanaryChecks_check",
+        "parameters": [
+          {
+            "name": "orgId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "endpointId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanaryCheckDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "releases"
+        ]
+      }
+    },
+    "/api/v1/orgs/{orgId}/approvals": {
+      "get": {
+        "operationId": "Approvals_list",
+        "parameters": [
+          {
+            "name": "orgId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "PENDING",
+                "APPROVED",
+                "REJECTED",
+                "EXPIRED"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Newest first (up to 100)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ApprovalDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "approvals"
+        ]
+      }
+    },
+    "/api/v1/orgs/{orgId}/approvals/{approvalId}/approve": {
+      "post": {
+        "operationId": "Approvals_approve",
+        "parameters": [
+          {
+            "name": "orgId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "approvalId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecisionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "approvals"
+        ]
+      }
+    },
+    "/api/v1/orgs/{orgId}/approvals/{approvalId}/reject": {
+      "post": {
+        "operationId": "Approvals_reject",
+        "parameters": [
+          {
+            "name": "orgId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "approvalId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecisionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "approvals"
+        ]
+      }
+    },
     "/api/v1/orgs/{orgId}/endpoints/{endpointId}/metrics": {
       "get": {
         "operationId": "Metrics_endpointMetrics",
@@ -2797,7 +3236,10 @@
                 "endpoint:update",
                 "dataset:create",
                 "evaluation:run",
-                "model:promote"
+                "model:promote",
+                "release:manage",
+                "approval:read",
+                "approval:decide"
               ]
             }
           }
@@ -4283,6 +4725,30 @@
             "type": "string",
             "format": "date-time",
             "nullable": true
+          },
+          "strategy": {
+            "type": "string",
+            "enum": [
+              "IMMEDIATE",
+              "CANARY"
+            ]
+          },
+          "canaryWeight": {
+            "type": "number",
+            "nullable": true,
+            "description": "CANARY: requested share"
+          },
+          "rollbackOfId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Slow rollback of"
+          },
+          "stableAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Last time it became the stable revision; rollback targets have one"
           }
         },
         "required": [
@@ -4295,7 +4761,153 @@
           "failureDetail",
           "createdAt",
           "updatedAt",
-          "readyAt"
+          "readyAt",
+          "strategy",
+          "canaryWeight",
+          "rollbackOfId",
+          "stableAt"
+        ]
+      },
+      "CanarySideDto": {
+        "type": "object",
+        "properties": {
+          "requests": {
+            "type": "number"
+          },
+          "errors": {
+            "type": "number",
+            "description": "5xx answers (and, for the canary, fallbacks to stable)"
+          },
+          "errorRate": {
+            "type": "number",
+            "nullable": true
+          },
+          "p95Ms": {
+            "type": "number",
+            "nullable": true
+          }
+        },
+        "required": [
+          "requests",
+          "errors",
+          "errorRate",
+          "p95Ms"
+        ]
+      },
+      "CanaryCheckRuleDto": {
+        "type": "object",
+        "properties": {
+          "rule": {
+            "type": "string"
+          },
+          "passed": {
+            "type": "boolean"
+          },
+          "detail": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "rule",
+          "passed",
+          "detail"
+        ]
+      },
+      "CanaryCheckDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revisionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "PASS",
+              "FAIL",
+              "INCONCLUSIVE"
+            ]
+          },
+          "canary": {
+            "$ref": "#/components/schemas/CanarySideDto"
+          },
+          "stable": {
+            "$ref": "#/components/schemas/CanarySideDto"
+          },
+          "fallbacks": {
+            "type": "number",
+            "description": "Requests the gateway sent to stable because the canary failed"
+          },
+          "windowSeconds": {
+            "type": "number"
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CanaryCheckRuleDto"
+            }
+          },
+          "aborted": {
+            "type": "boolean",
+            "description": "This check aborted the canary"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "revisionId",
+          "verdict",
+          "canary",
+          "stable",
+          "fallbacks",
+          "windowSeconds",
+          "checks",
+          "aborted",
+          "createdAt"
+        ]
+      },
+      "CanaryDto": {
+        "type": "object",
+        "properties": {
+          "revision": {
+            "$ref": "#/components/schemas/RevisionSummaryDto"
+          },
+          "weight": {
+            "type": "number",
+            "description": "Percent of requests"
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "latestCheck": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CanaryCheckDto"
+              }
+            ]
+          },
+          "eligible": {
+            "type": "boolean",
+            "description": "The latest check passed: Promote is allowed"
+          }
+        },
+        "required": [
+          "revision",
+          "weight",
+          "startedAt",
+          "latestCheck",
+          "eligible"
         ]
       },
       "EndpointDto": {
@@ -4359,6 +4971,16 @@
               }
             ]
           },
+          "canary": {
+            "nullable": true,
+            "description": "M8: the current canary",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CanaryDto"
+              }
+            ]
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time"
@@ -4377,6 +4999,7 @@
           "invokeUrl",
           "stableRevision",
           "inProgressRevision",
+          "canary",
           "createdAt"
         ]
       },
@@ -4404,7 +5027,7 @@
               "STAGING",
               "PRODUCTION"
             ],
-            "description": "Default STAGING. PRODUCTION needs four-eyes approvals, which arrive in M8"
+            "description": "Default STAGING. PRODUCTION (Owners/Admins only): every deployment needs a second Owner/Admin's approval, and release actions are Owner/Admin only"
           },
           "rateLimitRps": {
             "type": "number",
@@ -4478,6 +5101,16 @@
               }
             ]
           },
+          "canary": {
+            "nullable": true,
+            "description": "M8: the current canary",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CanaryDto"
+              }
+            ]
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time"
@@ -4506,6 +5139,7 @@
           "invokeUrl",
           "stableRevision",
           "inProgressRevision",
+          "canary",
           "createdAt",
           "project",
           "revisions"
@@ -4552,6 +5186,20 @@
           },
           "resources": {
             "$ref": "#/components/schemas/ResourcesDto"
+          },
+          "strategy": {
+            "type": "string",
+            "enum": [
+              "IMMEDIATE",
+              "CANARY"
+            ],
+            "description": "IMMEDIATE (default): takes all traffic once READY, the previous revision stays warm. CANARY: starts next to the stable revision with `canaryWeight` percent of the traffic"
+          },
+          "canaryWeight": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 50,
+            "description": "CANARY only: initial share in percent (default 10)"
           }
         },
         "required": [
@@ -4686,6 +5334,30 @@
             "format": "date-time",
             "nullable": true
           },
+          "strategy": {
+            "type": "string",
+            "enum": [
+              "IMMEDIATE",
+              "CANARY"
+            ]
+          },
+          "canaryWeight": {
+            "type": "number",
+            "nullable": true,
+            "description": "CANARY: requested share"
+          },
+          "rollbackOfId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Slow rollback of"
+          },
+          "stableAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Last time it became the stable revision; rollback targets have one"
+          },
           "stateDeadlineAt": {
             "type": "string",
             "format": "date-time",
@@ -4723,6 +5395,10 @@
           "createdAt",
           "updatedAt",
           "readyAt",
+          "strategy",
+          "canaryWeight",
+          "rollbackOfId",
+          "stableAt",
           "stateDeadlineAt",
           "resources",
           "runtimeRef",
@@ -4994,6 +5670,163 @@
           "outputs",
           "latencyMs"
         ]
+      },
+      "CanaryWeightDto": {
+        "type": "object",
+        "properties": {
+          "weight": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 50,
+            "description": "Percent of requests; 0 keeps it warm"
+          }
+        },
+        "required": [
+          "weight"
+        ]
+      },
+      "RollbackDto": {
+        "type": "object",
+        "properties": {
+          "targetRevisionId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "An earlier revision of this endpoint; defaults to the last one that served"
+          }
+        }
+      },
+      "RollbackResultDto": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "enum": [
+              "fast",
+              "slow"
+            ],
+            "description": "fast: the target was still warm and took over the traffic in this request. slow: it was already retired, so a new revision of the same version is being deployed"
+          },
+          "revision": {
+            "$ref": "#/components/schemas/RevisionSummaryDto"
+          }
+        },
+        "required": [
+          "path",
+          "revision"
+        ]
+      },
+      "EndpointRefDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "environment": {
+            "type": "string",
+            "enum": [
+              "STAGING",
+              "PRODUCTION"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "projectId",
+          "environment"
+        ]
+      },
+      "ApprovalDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "APPROVED",
+              "REJECTED",
+              "EXPIRED"
+            ]
+          },
+          "revision": {
+            "$ref": "#/components/schemas/RevisionSummaryDto"
+          },
+          "endpoint": {
+            "$ref": "#/components/schemas/EndpointRefDto"
+          },
+          "requestedBy": {
+            "$ref": "#/components/schemas/UserRefDto"
+          },
+          "decidedBy": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/UserRefDto"
+              }
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "decidedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "canDecide": {
+            "type": "boolean",
+            "description": "The caller may approve or reject it (an Owner/Admin, not the requester)"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "revision",
+          "endpoint",
+          "requestedBy",
+          "decidedBy",
+          "reason",
+          "expiresAt",
+          "decidedAt",
+          "createdAt",
+          "canDecide"
+        ]
+      },
+      "DecisionDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "Shown to the requester (required to reject)"
+          }
+        }
       },
       "MetricsSummaryDto": {
         "type": "object",

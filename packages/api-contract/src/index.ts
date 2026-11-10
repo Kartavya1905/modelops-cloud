@@ -35,6 +35,11 @@ export type Endpoint = Schemas['EndpointDto'];
 export type EndpointDetail = Schemas['EndpointDetailDto'];
 export type Revision = Schemas['RevisionDto'];
 export type RevisionSummary = Schemas['RevisionSummaryDto'];
+// M8: canary releases and approvals
+export type Canary = Schemas['CanaryDto'];
+export type CanaryCheck = Schemas['CanaryCheckDto'];
+export type Approval = Schemas['ApprovalDto'];
+export type RollbackResult = Schemas['RollbackResultDto'];
 export type RevisionState = RevisionSummary['state'];
 export type DeploymentEvent = Schemas['DeploymentEventDto'];
 export type ApiKey = Schemas['ApiKeyDto'];

@@ -180,6 +180,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/orgs/{orgId}/approvals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["Approvals_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orgs/{orgId}/approvals/{approvalId}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["Approvals_approve"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orgs/{orgId}/approvals/{approvalId}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["Approvals_reject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/orgs/{orgId}/audit-events": {
         parameters: {
             query?: never;
@@ -210,6 +258,54 @@ export interface paths {
         options?: never;
         head?: never;
         patch: operations["Endpoints_update"];
+        trace?: never;
+    };
+    "/api/v1/orgs/{orgId}/endpoints/{endpointId}/canary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["Releases_setWeight"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orgs/{orgId}/endpoints/{endpointId}/canary/abort": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["Releases_abort"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orgs/{orgId}/endpoints/{endpointId}/canary/checks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CanaryChecks_check"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/orgs/{orgId}/endpoints/{endpointId}/drift-reports": {
@@ -292,6 +388,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/orgs/{orgId}/endpoints/{endpointId}/promote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["Releases_promote"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/orgs/{orgId}/endpoints/{endpointId}/revisions": {
         parameters: {
             query?: never;
@@ -302,6 +414,22 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["Endpoints_deploy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orgs/{orgId}/endpoints/{endpointId}/rollback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["Releases_rollback"];
         delete?: never;
         options?: never;
         head?: never;
@@ -729,6 +857,25 @@ export interface components {
             revokedAt: string | null;
             scopes: string[];
         };
+        ApprovalDto: {
+            /** @description The caller may approve or reject it (an Owner/Admin, not the requester) */
+            canDecide: boolean;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            decidedAt: string | null;
+            decidedBy: components["schemas"]["UserRefDto"] | null;
+            endpoint: components["schemas"]["EndpointRefDto"];
+            /** Format: date-time */
+            expiresAt: string;
+            /** Format: uuid */
+            id: string;
+            reason: string | null;
+            requestedBy: components["schemas"]["UserRefDto"];
+            revision: components["schemas"]["RevisionSummaryDto"];
+            /** @enum {string} */
+            status: "PENDING" | "APPROVED" | "REJECTED" | "EXPIRED";
+        };
         AuditActorDto: {
             email: string;
             /** Format: uuid */
@@ -755,6 +902,50 @@ export interface components {
         AuditPageDto: {
             data: components["schemas"]["AuditEventDto"][];
             nextCursor: string | null;
+        };
+        CanaryCheckDto: {
+            /** @description This check aborted the canary */
+            aborted: boolean;
+            canary: components["schemas"]["CanarySideDto"];
+            checks: components["schemas"]["CanaryCheckRuleDto"][];
+            /** Format: date-time */
+            createdAt: string;
+            /** @description Requests the gateway sent to stable because the canary failed */
+            fallbacks: number;
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            revisionId: string;
+            stable: components["schemas"]["CanarySideDto"];
+            /** @enum {string} */
+            verdict: "PASS" | "FAIL" | "INCONCLUSIVE";
+            windowSeconds: number;
+        };
+        CanaryCheckRuleDto: {
+            detail: string;
+            passed: boolean;
+            rule: string;
+        };
+        CanaryDto: {
+            /** @description The latest check passed: Promote is allowed */
+            eligible: boolean;
+            latestCheck: components["schemas"]["CanaryCheckDto"] | null;
+            revision: components["schemas"]["RevisionSummaryDto"];
+            /** Format: date-time */
+            startedAt: string | null;
+            /** @description Percent of requests */
+            weight: number;
+        };
+        CanarySideDto: {
+            errorRate: number | null;
+            /** @description 5xx answers (and, for the canary, fallbacks to stable) */
+            errors: number;
+            p95Ms: number | null;
+            requests: number;
+        };
+        CanaryWeightDto: {
+            /** @description Percent of requests; 0 keeps it warm */
+            weight: number;
         };
         ChangeRoleDto: {
             /** @enum {string} */
@@ -800,7 +991,7 @@ export interface components {
         CreateEndpointDto: {
             description?: string;
             /**
-             * @description Default STAGING. PRODUCTION needs four-eyes approvals, which arrive in M8
+             * @description Default STAGING. PRODUCTION (Owners/Admins only): every deployment needs a second Owner/Admin's approval, and release actions are Owner/Admin only
              * @enum {string}
              */
             environment?: "STAGING" | "PRODUCTION";
@@ -856,13 +1047,24 @@ export interface components {
             uri: string;
             version: string;
         };
+        DecisionDto: {
+            /** @description Shown to the requester (required to reject) */
+            reason?: string;
+        };
         DeployDto: {
+            /** @description CANARY only: initial share in percent (default 10) */
+            canaryWeight?: number;
             /**
              * Format: uuid
              * @description A VALIDATED version of a model in the same project
              */
             modelVersionId: string;
             resources?: components["schemas"]["ResourcesDto"];
+            /**
+             * @description IMMEDIATE (default): takes all traffic once READY, the previous revision stays warm. CANARY: starts next to the stable revision with `canaryWeight` percent of the traffic
+             * @enum {string}
+             */
+            strategy?: "IMMEDIATE" | "CANARY";
         };
         DeploymentEventDto: {
             /** Format: date-time */
@@ -899,6 +1101,8 @@ export interface components {
             windowStart: string;
         };
         EndpointDetailDto: {
+            /** @description M8: the current canary */
+            canary: components["schemas"]["CanaryDto"] | null;
             /** @description Inputs are recorded for drift detection (opt-in) */
             captureInputs: boolean;
             /** Format: date-time */
@@ -924,6 +1128,8 @@ export interface components {
             stableRevision: components["schemas"]["RevisionSummaryDto"] | null;
         };
         EndpointDto: {
+            /** @description M8: the current canary */
+            canary: components["schemas"]["CanaryDto"] | null;
             /** @description Inputs are recorded for drift detection (opt-in) */
             captureInputs: boolean;
             /** Format: date-time */
@@ -961,6 +1167,16 @@ export interface components {
             /** @description Seconds between points */
             stepSeconds: number;
             summary: components["schemas"]["MetricsSummaryDto"];
+        };
+        EndpointRefDto: {
+            /** @enum {string} */
+            environment: "STAGING" | "PRODUCTION";
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** Format: uuid */
+            projectId: string;
+            slug: string;
         };
         EvalMetricsDto: {
             baseline?: components["schemas"]["ScoreDto"] | null;
@@ -1057,7 +1273,7 @@ export interface components {
             orgName: string;
             orgSlug: string;
             /** @description For UI hints only. */
-            permissions: ("org:read" | "member:read" | "member:manage" | "invitation:create" | "project:read" | "project:create" | "project:update" | "project:archive" | "audit:read" | "experiment:read" | "model:read" | "model:create" | "model:register" | "endpoint:read" | "endpoint:create" | "deployment:create" | "deployment:cancel" | "apikey:read" | "apikey:manage" | "monitoring:read" | "monitoring:run" | "endpoint:update" | "dataset:create" | "evaluation:run" | "model:promote")[];
+            permissions: ("org:read" | "member:read" | "member:manage" | "invitation:create" | "project:read" | "project:create" | "project:update" | "project:archive" | "audit:read" | "experiment:read" | "model:read" | "model:create" | "model:register" | "endpoint:read" | "endpoint:create" | "deployment:create" | "deployment:cancel" | "apikey:read" | "apikey:manage" | "monitoring:read" | "monitoring:run" | "endpoint:update" | "dataset:create" | "evaluation:run" | "model:promote" | "release:manage" | "approval:read" | "approval:decide")[];
             /** @enum {string} */
             role: "OWNER" | "ADMIN" | "ML_ENGINEER" | "VIEWER";
         };
@@ -1353,6 +1569,8 @@ export interface components {
             memoryMb?: number;
         };
         RevisionDto: {
+            /** @description CANARY: requested share */
+            canaryWeight: number | null;
             /** Format: date-time */
             createdAt: string;
             /** Format: uuid */
@@ -1370,12 +1588,24 @@ export interface components {
                 [key: string]: number;
             };
             revisionNumber: number;
+            /**
+             * Format: uuid
+             * @description Slow rollback of
+             */
+            rollbackOfId: string | null;
             /** @description Container name */
             runtimeRef: string | null;
+            /**
+             * Format: date-time
+             * @description Last time it became the stable revision; rollback targets have one
+             */
+            stableAt: string | null;
             /** @enum {string} */
             state: "REQUESTED" | "AWAITING_APPROVAL" | "QUEUED" | "PROVISIONING" | "LOADING" | "VERIFYING" | "READY" | "DEGRADED" | "DRAINING" | "RETIRED" | "FAILED" | "CANCELLED";
             /** Format: date-time */
             stateDeadlineAt: string | null;
+            /** @enum {string} */
+            strategy: "IMMEDIATE" | "CANARY";
             /** Format: date-time */
             updatedAt: string;
         };
@@ -1390,6 +1620,8 @@ export interface components {
             version: number;
         };
         RevisionSummaryDto: {
+            /** @description CANARY: requested share */
+            canaryWeight: number | null;
             /** Format: date-time */
             createdAt: string;
             /** Format: uuid */
@@ -1402,10 +1634,37 @@ export interface components {
             /** Format: date-time */
             readyAt: string | null;
             revisionNumber: number;
+            /**
+             * Format: uuid
+             * @description Slow rollback of
+             */
+            rollbackOfId: string | null;
+            /**
+             * Format: date-time
+             * @description Last time it became the stable revision; rollback targets have one
+             */
+            stableAt: string | null;
             /** @enum {string} */
             state: "REQUESTED" | "AWAITING_APPROVAL" | "QUEUED" | "PROVISIONING" | "LOADING" | "VERIFYING" | "READY" | "DEGRADED" | "DRAINING" | "RETIRED" | "FAILED" | "CANCELLED";
+            /** @enum {string} */
+            strategy: "IMMEDIATE" | "CANARY";
             /** Format: date-time */
             updatedAt: string;
+        };
+        RollbackDto: {
+            /**
+             * Format: uuid
+             * @description An earlier revision of this endpoint; defaults to the last one that served
+             */
+            targetRevisionId?: string;
+        };
+        RollbackResultDto: {
+            /**
+             * @description fast: the target was still warm and took over the traffic in this request. slow: it was already retired, so a new revision of the same version is being deployed
+             * @enum {string}
+             */
+            path: "fast" | "slow";
+            revision: components["schemas"]["RevisionSummaryDto"];
         };
         RunComparisonDto: {
             /** @description Params whose value differs between runs */
@@ -1850,6 +2109,82 @@ export interface operations {
             };
         };
     };
+    Approvals_list: {
+        parameters: {
+            query?: {
+                status?: "PENDING" | "APPROVED" | "REJECTED" | "EXPIRED";
+            };
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Newest first (up to 100) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalDto"][];
+                };
+            };
+        };
+    };
+    Approvals_approve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                approvalId: string;
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecisionDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalDto"];
+                };
+            };
+        };
+    };
+    Approvals_reject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                approvalId: string;
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecisionDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalDto"];
+                };
+            };
+        };
+    };
     Audit_list: {
         parameters: {
             query?: {
@@ -1923,6 +2258,82 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EndpointDetailDto"];
+                };
+            };
+        };
+    };
+    Releases_setWeight: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description ETag from GET /endpoints/{id} (W/"<rowVersion>"); a stale one is 412 */
+                "If-Match": string;
+            };
+            path: {
+                endpointId: string;
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CanaryWeightDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EndpointDetailDto"];
+                };
+            };
+        };
+    };
+    Releases_abort: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description ETag from GET /endpoints/{id} (W/"<rowVersion>"); a stale one is 412 */
+                "If-Match": string;
+            };
+            path: {
+                endpointId: string;
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EndpointDetailDto"];
+                };
+            };
+        };
+    };
+    CanaryChecks_check: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                endpointId: string;
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanaryCheckDto"];
                 };
             };
         };
@@ -2075,6 +2486,31 @@ export interface operations {
             };
         };
     };
+    Releases_promote: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description ETag from GET /endpoints/{id} (W/"<rowVersion>"); a stale one is 412 */
+                "If-Match": string;
+            };
+            path: {
+                endpointId: string;
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EndpointDetailDto"];
+                };
+            };
+        };
+    };
     Endpoints_deploy: {
         parameters: {
             query?: never;
@@ -2101,6 +2537,45 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RevisionDto"];
+                };
+            };
+        };
+    };
+    Releases_rollback: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description ETag from GET /endpoints/{id} (W/"<rowVersion>"); a stale one is 412 */
+                "If-Match": string;
+            };
+            path: {
+                endpointId: string;
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RollbackDto"];
+            };
+        };
+        responses: {
+            /** @description Fast rollback: traffic has moved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RollbackResultDto"];
+                };
+            };
+            /** @description Slow rollback: redeploying */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RollbackResultDto"];
                 };
             };
         };

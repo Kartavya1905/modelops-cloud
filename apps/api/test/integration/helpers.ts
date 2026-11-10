@@ -11,6 +11,7 @@ import { APP_CONFIG, type AppConfig, loadConfig } from '../../src/config/config'
 import type { Role } from '../../src/generated/prisma/client';
 import { DeployWorker } from '../../src/modules/deployments/deploy.worker';
 import { EventsWorker } from '../../src/modules/monitoring/events.consumer';
+import { CanaryScheduler } from '../../src/modules/deployments/canary-analysis';
 import { DriftScheduler } from '../../src/modules/monitoring/monitoring.module';
 import { ValidationWorker } from '../../src/modules/validation/validation.worker';
 import { setupApp } from '../../src/setup-app';
@@ -153,6 +154,8 @@ export async function createTestWorker(env: Record<string, string> = {}): Promis
     .overrideProvider(EventsWorker)
     .useValue({})
     .overrideProvider(DriftScheduler)
+    .useValue({})
+    .overrideProvider(CanaryScheduler)
     .useValue({})
     .compile();
   await worker.init();

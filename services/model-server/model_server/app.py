@@ -67,6 +67,11 @@ def create_app(settings: Settings, model: LoadedModel) -> FastAPI:
         started = time.perf_counter()
         values = model.session.run(model.output_names, {model.input_name: x})
         elapsed_ms = (time.perf_counter() - started) * 1000
+        # A model can blow up numerically on inputs its golden examples never covered. Say so
+        # explicitly (a 500 the gateway counts against this revision), never return NaN/inf.
+        for name, value in zip(model.output_names, values, strict=True):
+            if value.dtype.kind == "f" and not np.isfinite(value).all():
+                raise HTTPException(500, f"model produced non-finite values in '{name}'")
         return {
             "outputs": {n: _jsonable(v) for n, v in zip(model.output_names, values, strict=True)},
             "revisionId": settings.revision_id,

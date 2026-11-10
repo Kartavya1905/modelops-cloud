@@ -21,6 +21,7 @@ export interface ReconcileReport {
   recovered: number;
   restarted: number;
   retired: number;
+  approvalsExpired: number;
   orphansRemoved: number;
   routingPublished: boolean;
 }
@@ -64,6 +65,7 @@ export class Reconciler {
       recovered: 0,
       restarted: 0,
       retired: 0,
+      approvalsExpired: 0,
       orphansRemoved: 0,
       routingPublished: false,
     };
@@ -71,11 +73,35 @@ export class Reconciler {
 
     // 1. Liveness: anything past its state deadline fails (and is cleaned up).
     const late = await this.prisma.deploymentRevision.findMany({
-      where: { state: { in: [...IN_PROGRESS] }, stateDeadlineAt: { lt: now } },
+      where: {
+        state: { in: IN_PROGRESS.filter((st) => st !== 'AWAITING_APPROVAL') },
+        stateDeadlineAt: { lt: now },
+      },
     });
     for (const rev of late) {
       await this.processor.fail(rev, 'TIMEOUT', `stuck in ${rev.state} past its deadline`);
       report.timedOut++;
+    }
+
+    // 1b. Approvals nobody decided within 24 h expire: the deployment is cancelled, not failed.
+    const unanswered = await this.prisma.deploymentRevision.findMany({
+      where: { state: 'AWAITING_APPROVAL', stateDeadlineAt: { lt: now } },
+    });
+    for (const rev of unanswered) {
+      const moved = await this.prisma.$transaction(async (tx) => {
+        const r = await transition(tx, rev, 'CANCELLED', {
+          message: 'Approval expired: nobody decided within 24 hours',
+          data: { failureCode: 'APPROVAL_EXPIRED' },
+        });
+        if (r) {
+          await tx.approval.updateMany({
+            where: { revisionId: rev.id, status: 'PENDING' },
+            data: { status: 'EXPIRED' },
+          });
+        }
+        return r;
+      });
+      if (moved) report.approvalsExpired++;
     }
 
     // 2. Lost jobs (Redis restart, crash after the relay committed): re-enqueue, deduplicated.

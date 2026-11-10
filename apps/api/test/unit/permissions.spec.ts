@@ -19,6 +19,9 @@ import { MetricsController } from '../../src/modules/metrics/metrics.controller'
 import { MonitoringController } from '../../src/modules/monitoring/monitoring.controller';
 import { EvaluationController } from '../../src/modules/evaluation/evaluation';
 import { DatasetsController } from '../../src/modules/registry/datasets';
+import { ApprovalsController } from '../../src/modules/deployments/approvals';
+import { CanaryChecksController } from '../../src/modules/deployments/canary-analysis';
+import { ReleasesController } from '../../src/modules/deployments/releases';
 
 describe('permission table', () => {
   it('Owner holds every permission; Viewer holds only read permissions', () => {
@@ -64,6 +67,9 @@ describe('every org-scoped route declares a permission', () => {
     MonitoringController,
     EvaluationController,
     DatasetsController,
+    ReleasesController,
+    CanaryChecksController,
+    ApprovalsController,
   ];
 
   const guarded = (target: object): boolean => {

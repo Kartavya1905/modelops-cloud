@@ -14,49 +14,37 @@ import type {
   EndpointDetailDto,
   EndpointDto,
   RevisionDto,
-  RevisionSummaryDto,
   UpdateEndpointDto,
 } from './deployments.dto';
 import { OUTBOX_DEPLOY } from './outbox.relay';
+import { canaryCheckDto, revisionInclude, summary } from './revision-view';
 import { CANCELLABLE, IN_PROGRESS } from './state-machine';
 import { transition } from './transition';
 
+/** Owners and Admins: the only roles that may touch PRODUCTION endpoints (docs/04, FR-41). */
+export const ADMIN_ROLES: ReadonlySet<Role> = new Set<Role>(['OWNER', 'ADMIN']);
+const APPROVAL_TTL_MS = 24 * 60 * 60_000;
+
+interface SignatureJson {
+  inputs: { features?: string[] }[];
+}
+export const featuresOf = (signature: unknown) =>
+  ((signature as SignatureJson).inputs[0]?.features ?? []).join(',');
+
+/** What a new revision needs; shared by deploy and the slow rollback path. */
+export interface NewRevision {
+  orgId: string;
+  endpoint: { id: string; environment: 'STAGING' | 'PRODUCTION'; stableRevisionId: string | null };
+  modelVersionId: string;
+  resources?: { cpus?: number; memoryMb?: number };
+  strategy: 'IMMEDIATE' | 'CANARY';
+  canaryWeight: number | null;
+  rollbackOfId?: string;
+  actor: ActorContext;
+}
+
 const IDEMPOTENCY_KEY = /^[A-Za-z0-9._:-]{8,128}$/;
 const IDEMPOTENCY_TTL_MS = 24 * 60 * 60_000;
-
-const revisionInclude = {
-  modelVersion: {
-    select: {
-      id: true,
-      version: true,
-      framework: true,
-      modelId: true,
-      model: { select: { name: true } },
-    },
-  },
-} as const satisfies Prisma.DeploymentRevisionInclude;
-type RevisionRow = Prisma.DeploymentRevisionGetPayload<{ include: typeof revisionInclude }>;
-
-function summary(r: RevisionRow): RevisionSummaryDto {
-  return {
-    id: r.id,
-    endpointId: r.endpointId,
-    revisionNumber: r.revisionNumber,
-    state: r.state,
-    modelVersion: {
-      id: r.modelVersion.id,
-      modelId: r.modelVersion.modelId,
-      modelName: r.modelVersion.model.name,
-      version: r.modelVersion.version,
-      framework: r.modelVersion.framework,
-    },
-    failureCode: r.failureCode,
-    failureDetail: r.failureDetail,
-    createdAt: r.createdAt.toISOString(),
-    updatedAt: r.updatedAt.toISOString(),
-    readyAt: r.readyAt?.toISOString() ?? null,
-  };
-}
 
 /** Thrown inside the deploy transaction to roll it back and replay the stored response. */
 class IdempotentReplay extends Error {}
@@ -101,6 +89,18 @@ export class EndpointsService {
       where: { endpointId: e.id, state: { in: [...IN_PROGRESS] } },
       include: revisionInclude,
     });
+    const canaryRev = e.canaryRevisionId
+      ? await db.deploymentRevision.findUnique({
+          where: { id: e.canaryRevisionId },
+          include: revisionInclude,
+        })
+      : null;
+    const latestCheck = canaryRev
+      ? await db.canaryCheck.findFirst({
+          where: { revisionId: canaryRev.id },
+          orderBy: { createdAt: 'desc' },
+        })
+      : null;
     return {
       id: e.id,
       projectId: e.projectId,
@@ -114,6 +114,15 @@ export class EndpointsService {
       invokeUrl: this.invokeUrl(e.slug),
       stableRevision: stable ? summary(stable) : null,
       inProgressRevision: inProgress ? summary(inProgress) : null,
+      canary: canaryRev
+        ? {
+            revision: summary(canaryRev),
+            weight: e.canaryWeight,
+            startedAt: e.canaryStartedAt?.toISOString() ?? null,
+            latestCheck: latestCheck ? canaryCheckDto(latestCheck) : null,
+            eligible: latestCheck?.verdict === 'PASS',
+          }
+        : null,
       createdAt: e.createdAt.toISOString(),
     };
   }
@@ -123,16 +132,15 @@ export class EndpointsService {
     projectId: string,
     dto: CreateEndpointDto,
     actor: ActorContext,
+    role: Role,
   ): Promise<EndpointDto> {
     const project = await this.prisma.project.findFirst({ where: { id: projectId, orgId } });
     if (!project) throw Errors.notFound('Project');
     if (project.archivedAt) throw Errors.conflict('PROJECT_ARCHIVED', 'This project is archived.');
-    if (dto.environment === 'PRODUCTION') {
-      throw new AppError(
-        HttpStatus.UNPROCESSABLE_ENTITY,
-        'PRODUCTION_REQUIRES_APPROVALS',
-        'Production endpoints are not available yet',
-        'Production deploys need four-eyes approvals, which arrive in Milestone 8. Use STAGING.',
+    if (dto.environment === 'PRODUCTION' && !ADMIN_ROLES.has(role)) {
+      throw Errors.forbidden(
+        'PRODUCTION_REQUIRES_ADMIN',
+        'Only Owners and Admins can create production endpoints.',
       );
     }
     const slug = dto.slug ?? slugify(dto.name).slice(0, 40).replace(/-+$/, '');
@@ -145,7 +153,7 @@ export class EndpointsService {
             slug,
             name: dto.name,
             description: dto.description ?? null,
-            environment: 'STAGING',
+            environment: dto.environment ?? 'STAGING',
             rateLimitRps: dto.rateLimitRps ?? 50,
             createdById: actor.userId,
           },
@@ -296,6 +304,7 @@ export class EndpointsService {
     dto: DeployDto,
     idempotencyKey: string | undefined,
     actor: ActorContext,
+    role: Role,
   ): Promise<{ status: number; body: RevisionDto; replayed: boolean }> {
     if (!idempotencyKey || !IDEMPOTENCY_KEY.test(idempotencyKey)) {
       throw Errors.validation([
@@ -330,6 +339,40 @@ export class EndpointsService {
         `Only VALIDATED versions can be deployed; this one is ${mv.status}.`,
       );
     }
+    if (endpoint.environment === 'PRODUCTION' && !ADMIN_ROLES.has(role)) {
+      throw Errors.forbidden(
+        'PRODUCTION_REQUIRES_ADMIN',
+        'Only Owners and Admins can deploy to a production endpoint.',
+      );
+    }
+    if (endpoint.canaryRevisionId) {
+      throw Errors.conflict(
+        'CANARY_IN_PROGRESS',
+        'This endpoint is running a canary. Promote or abort it before deploying again.',
+      );
+    }
+    const strategy = dto.strategy ?? 'IMMEDIATE';
+    if (strategy === 'CANARY') {
+      const stable = endpoint.stableRevisionId
+        ? await this.prisma.deploymentRevision.findUnique({
+            where: { id: endpoint.stableRevisionId },
+            include: { modelVersion: { select: { signature: true } } },
+          })
+        : null;
+      if (!stable) {
+        throw Errors.conflict(
+          'NO_STABLE_REVISION',
+          'A canary is compared with the stable revision, and this endpoint has none yet. Deploy IMMEDIATE first.',
+        );
+      }
+      // Clients send one input shape: a canary that expects other features would fail its share.
+      if (featuresOf(stable.modelVersion.signature) !== featuresOf(mv.signature)) {
+        throw Errors.conflict(
+          'SIGNATURE_MISMATCH',
+          'A canary must accept the same input features, in the same order, as the stable revision.',
+        );
+      }
+    }
 
     let revisionId: string;
     try {
@@ -342,54 +385,19 @@ export class EndpointsService {
         // A concurrent request with the same key committed first (we waited on its row lock).
         if (claimed === 0) throw new IdempotentReplay();
 
-        await tx.$queryRaw`SELECT id FROM endpoints WHERE id = ${endpointId}::uuid FOR UPDATE`;
-        const last = await tx.deploymentRevision.aggregate({
-          where: { endpointId },
-          _max: { revisionNumber: true },
-        });
-        const rev = await tx.deploymentRevision.create({
-          data: {
-            orgId,
-            endpointId,
-            modelVersionId: mv.id,
-            revisionNumber: (last._max.revisionNumber ?? 0) + 1,
-            resources: {
-              cpus: dto.resources?.cpus ?? 0.5,
-              memoryMb: dto.resources?.memoryMb ?? 512,
-            },
-            stateDeadlineAt: new Date(Date.now() + 10 * 60_000),
-            previousRevisionId: endpoint.stableRevisionId,
-            requestedById: actor.userId,
-          },
-        });
-        await tx.deploymentEvent.create({
-          data: {
-            orgId,
-            revisionId: rev.id,
-            fromState: null,
-            toState: 'REQUESTED',
-            message: `Deployment of ${mv.id.slice(0, 8)} requested`,
-          },
-        });
-        await tx.outboxMessage.create({
-          data: {
-            type: OUTBOX_DEPLOY,
-            aggregateType: 'deployment_revision',
-            aggregateId: rev.id,
-            payload: { endpointId },
-          },
+        const rev = await this.insertRevision(tx, {
+          orgId,
+          endpoint,
+          modelVersionId: mv.id,
+          resources: dto.resources,
+          strategy,
+          canaryWeight: strategy === 'CANARY' ? (dto.canaryWeight ?? 10) : null,
+          actor,
         });
         // The replay record commits with the revision: a retry can never see a half-done request.
         await tx.idempotencyKey.update({
           where: { orgId_key: { orgId, key: idempotencyKey } },
           data: { responseBody: { revisionId: rev.id } },
-        });
-        await this.audit.record(tx, actor, {
-          orgId,
-          action: 'deployment.requested',
-          targetType: 'deployment_revision',
-          targetId: rev.id,
-          metadata: { endpointId, modelVersionId: mv.id, revision: rev.revisionNumber },
         });
         return rev.id;
       });
@@ -407,6 +415,84 @@ export class EndpointsService {
       throw err;
     }
     return { status: 202, body: await this.getRevision(orgId, revisionId), replayed: false };
+  }
+
+  /**
+   * Inserts a REQUESTED revision with its first event and audit row, inside the caller's
+   * transaction. STAGING (and a slow rollback, which redeploys an already approved version) goes
+   * to the outbox at once; PRODUCTION waits in AWAITING_APPROVAL for a second Owner/Admin.
+   */
+  async insertRevision(tx: Prisma.TransactionClient, r: NewRevision) {
+    await tx.$queryRaw`SELECT id FROM endpoints WHERE id = ${r.endpoint.id}::uuid FOR UPDATE`;
+    const last = await tx.deploymentRevision.aggregate({
+      where: { endpointId: r.endpoint.id },
+      _max: { revisionNumber: true },
+    });
+    const rev = await tx.deploymentRevision.create({
+      data: {
+        orgId: r.orgId,
+        endpointId: r.endpoint.id,
+        modelVersionId: r.modelVersionId,
+        revisionNumber: (last._max.revisionNumber ?? 0) + 1,
+        resources: { cpus: r.resources?.cpus ?? 0.5, memoryMb: r.resources?.memoryMb ?? 512 },
+        stateDeadlineAt: new Date(Date.now() + 10 * 60_000),
+        previousRevisionId: r.endpoint.stableRevisionId,
+        strategy: r.strategy,
+        canaryWeight: r.canaryWeight,
+        rollbackOfId: r.rollbackOfId ?? null,
+        requestedById: r.actor.userId,
+      },
+    });
+    await tx.deploymentEvent.create({
+      data: {
+        orgId: r.orgId,
+        revisionId: rev.id,
+        fromState: null,
+        toState: 'REQUESTED',
+        message: r.rollbackOfId
+          ? `Rollback: redeploy of the version of an earlier revision requested`
+          : r.strategy === 'CANARY'
+            ? `Canary deployment (${String(r.canaryWeight)}% of traffic) requested`
+            : `Deployment of ${r.modelVersionId.slice(0, 8)} requested`,
+      },
+    });
+    const needsApproval = r.endpoint.environment === 'PRODUCTION' && !r.rollbackOfId;
+    if (needsApproval) {
+      await transition(tx, rev, 'AWAITING_APPROVAL', {
+        message: 'Production deployment: waiting for a second Owner/Admin to approve',
+      });
+      await tx.approval.create({
+        data: {
+          orgId: r.orgId,
+          revisionId: rev.id,
+          requestedById: r.actor.userId,
+          expiresAt: new Date(Date.now() + APPROVAL_TTL_MS),
+        },
+      });
+    } else {
+      await tx.outboxMessage.create({
+        data: {
+          type: OUTBOX_DEPLOY,
+          aggregateType: 'deployment_revision',
+          aggregateId: rev.id,
+          payload: { endpointId: r.endpoint.id },
+        },
+      });
+    }
+    await this.audit.record(tx, r.actor, {
+      orgId: r.orgId,
+      action: needsApproval ? 'deployment.approval_requested' : 'deployment.requested',
+      targetType: 'deployment_revision',
+      targetId: rev.id,
+      metadata: {
+        endpointId: r.endpoint.id,
+        modelVersionId: r.modelVersionId,
+        revision: rev.revisionNumber,
+        strategy: r.strategy,
+        ...(r.rollbackOfId ? { rollbackOf: r.rollbackOfId } : {}),
+      },
+    });
+    return rev;
   }
 
   private async replay(
@@ -462,6 +548,13 @@ export class EndpointsService {
         message: 'Cancelled by user',
         data: { failureCode: 'CANCELLED_BY_USER' },
       });
+      if (r && rev.state === 'AWAITING_APPROVAL') {
+        // Withdrawn before anyone decided: the approval closes without a decision.
+        await tx.approval.updateMany({
+          where: { revisionId: rev.id, status: 'PENDING' },
+          data: { status: 'EXPIRED', reason: 'Withdrawn: the deployment was cancelled' },
+        });
+      }
       if (r) {
         await this.audit.record(tx, actor, {
           orgId,

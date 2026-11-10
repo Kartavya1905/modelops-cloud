@@ -25,6 +25,7 @@ import {
   CardHeader,
   CardTitle,
   Field,
+  Input,
   Table,
   TBody,
   Td,
@@ -40,6 +41,7 @@ import { cn, formatDateTime, formatRelative } from '@/lib/utils';
 import { CopyField } from './api-keys-section';
 import { MonitoringPanel } from '@/features/monitoring/monitoring-panel';
 import { EndpointDashboard } from './dashboard';
+import { ReleasePanel } from './releases';
 import { Playground } from './playground';
 import { isSettled, useCancelRevision, useDeploy, useEndpoint, useRevision } from './api';
 import { PIPELINE, PIPELINE_HELP, RevisionStateBadge, stateLabel } from './labels';
@@ -69,6 +71,12 @@ function DeployDialog({
   const validated = (model.data?.versions ?? []).filter((v) => v.status === 'VALIDATED');
   const [versionId, setVersionId] = useState('');
   const selectedVersion = versionId || validated[0]?.id || '';
+  // M8: with something serving, the new version can start as a canary on a share of traffic.
+  const canCanary = endpoint.stableRevision?.state === 'READY';
+  const [strategy, setStrategy] = useState<'IMMEDIATE' | 'CANARY'>('IMMEDIATE');
+  const [weight, setWeight] = useState('10');
+  const canaryWeight = Number(weight);
+  const weightOk = Number.isInteger(canaryWeight) && canaryWeight >= 0 && canaryWeight <= 50;
   // One key per dialog: retries and double clicks replay instead of deploying twice.
   const [key] = useState(() => crypto.randomUUID());
   const deploy = useDeploy(orgId, endpoint.id);
@@ -131,16 +139,66 @@ function DeployDialog({
               ))}
             </NativeSelect>
           </Field>
+          {canCanary && (
+            <Field
+              id="deploy-strategy"
+              label="Rollout"
+              hint={
+                strategy === 'CANARY'
+                  ? 'Starts next to the serving revision; the analysis compares both before you promote it.'
+                  : 'Takes all traffic once it is READY; the serving revision stays warm for rollback.'
+              }
+            >
+              <NativeSelect
+                id="deploy-strategy"
+                value={strategy}
+                onChange={(e) => setStrategy(e.target.value as 'IMMEDIATE' | 'CANARY')}
+              >
+                <option value="IMMEDIATE">Replace when ready (blue/green)</option>
+                <option value="CANARY">Canary: a share of traffic first</option>
+              </NativeSelect>
+            </Field>
+          )}
+          {canCanary && strategy === 'CANARY' && (
+            <Field
+              id="deploy-canary-weight"
+              label="Canary share (%)"
+              error={weightOk ? undefined : '0 to 50'}
+            >
+              <Input
+                id="deploy-canary-weight"
+                type="number"
+                min={0}
+                max={50}
+                value={weight}
+                onChange={(e) => setWeight(e.target.value)}
+                aria-invalid={!weightOk}
+              />
+            </Field>
+          )}
+          {endpoint.environment === 'PRODUCTION' && (
+            <p className="text-sm text-muted-foreground">
+              Production: the deployment waits until another Owner or Admin approves it.
+            </p>
+          )}
         </div>
         <DialogFooter>
           <Button
-            disabled={!selectedVersion || deploy.isPending}
+            disabled={!selectedVersion || deploy.isPending || (strategy === 'CANARY' && !weightOk)}
             onClick={() =>
               deploy.mutate(
-                { modelVersionId: selectedVersion, key },
+                {
+                  modelVersionId: selectedVersion,
+                  key,
+                  ...(canCanary && strategy === 'CANARY' ? { strategy, canaryWeight } : {}),
+                },
                 {
                   onSuccess: (r) => {
-                    toast.success(`Revision ${String(r.revisionNumber)} requested`);
+                    toast.success(
+                      r.state === 'AWAITING_APPROVAL'
+                        ? `Revision ${String(r.revisionNumber)} is waiting for approval`
+                        : `Revision ${String(r.revisionNumber)} requested`,
+                    );
                     onOpenChange(false);
                   },
                 },
@@ -160,11 +218,18 @@ function DeployDialog({
 function Stepper({ revision }: { revision: Revision }) {
   const reached = new Set(revision.events.map((e) => e.toState));
   const failed = revision.state === 'FAILED' || revision.state === 'CANCELLED';
+  // Production deployments (M8) have an approval step between REQUESTED and QUEUED.
+  const steps: RevisionState[] = reached.has('AWAITING_APPROVAL')
+    ? ['REQUESTED', 'AWAITING_APPROVAL', ...PIPELINE.slice(1)]
+    : [...PIPELINE];
   // The step a failed revision was attempting: the first one it never reached.
-  const stoppedAt = failed ? PIPELINE.find((s) => !reached.has(s)) : undefined;
+  const stoppedAt = failed ? steps.find((s) => !reached.has(s)) : undefined;
   return (
-    <ol className="grid gap-2 sm:grid-cols-6" aria-label="Deployment progress">
-      {PIPELINE.map((step) => {
+    <ol
+      className={cn('grid gap-2', steps.length === 7 ? 'sm:grid-cols-7' : 'sm:grid-cols-6')}
+      aria-label="Deployment progress"
+    >
+      {steps.map((step) => {
         const done = reached.has(step);
         const current = revision.state === step && step !== 'READY';
         const stoppedHere = step === stoppedAt;
@@ -372,6 +437,7 @@ export function EndpointPage() {
         }
       />
       <Serving orgId={orgId} endpoint={e} />
+      <ReleasePanel orgId={orgId} endpoint={e} />
       <Playground
         orgId={orgId}
         endpointId={e.id}
@@ -408,7 +474,16 @@ export function EndpointPage() {
                       <RevisionStateBadge state={r.state} />
                     </Td>
                     <Td className="hidden text-xs text-muted-foreground md:table-cell">
-                      {r.failureCode ?? (r.id === e.stableRevision?.id ? 'serving' : '')}
+                      {r.failureCode ??
+                        (r.id === e.stableRevision?.id
+                          ? 'serving'
+                          : r.id === e.canary?.revision.id
+                            ? `canary ${String(e.canary.weight)}%`
+                            : r.rollbackOfId
+                              ? 'rollback'
+                              : r.strategy === 'CANARY'
+                                ? 'canary'
+                                : '')}
                     </Td>
                     <Td className="hidden text-muted-foreground sm:table-cell">
                       {formatRelative(r.createdAt)}

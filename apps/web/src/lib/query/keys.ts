@@ -41,4 +41,6 @@ export const qk = {
   playground: (orgId: string, endpointId: string) =>
     ['orgs', orgId, 'endpoints', endpointId, 'playground'] as const,
   overview: (orgId: string) => ['orgs', orgId, 'overview'] as const,
+  // M8
+  approvals: (orgId: string, status: string) => ['orgs', orgId, 'approvals', status] as const,
 };

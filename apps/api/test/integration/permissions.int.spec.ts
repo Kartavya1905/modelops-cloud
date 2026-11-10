@@ -338,6 +338,60 @@ const ROUTES: RouteCase[] = [
     call: (c) =>
       c.as.post(`/orgs/${c.orgId}/models/${c.modelId}/champion`, { evaluationId: c.versionId }),
   },
+  // ---- M8: releases and approvals (the endpoint is STAGING; an approval id that doesn't exist
+  // is 404 *after* authorization, so a 404 proves the role was allowed).
+  {
+    name: 'PUT canary',
+    permission: 'release:manage',
+    allowedIf: (res) => res.status !== 403,
+    call: (c) =>
+      c.as.agent
+        .put(`${API}/orgs/${c.orgId}/endpoints/${c.endpointId}/canary`)
+        .set('x-csrf-token', c.as.session.csrfToken)
+        .set('if-match', 'W/"0"')
+        .send({ weight: 10 }),
+  },
+  {
+    name: 'POST canary abort',
+    permission: 'release:manage',
+    allowedIf: (res) => res.status !== 403,
+    call: (c) => c.as.post(`/orgs/${c.orgId}/endpoints/${c.endpointId}/canary/abort`, {}),
+  },
+  {
+    name: 'POST canary check',
+    permission: 'release:manage',
+    allowedIf: (res) => res.status !== 403,
+    call: (c) => c.as.post(`/orgs/${c.orgId}/endpoints/${c.endpointId}/canary/checks`, {}),
+  },
+  {
+    name: 'POST promote',
+    permission: 'release:manage',
+    allowedIf: (res) => res.status !== 403,
+    call: (c) => c.as.post(`/orgs/${c.orgId}/endpoints/${c.endpointId}/promote`, {}),
+  },
+  {
+    name: 'POST rollback',
+    permission: 'release:manage',
+    allowedIf: (res) => res.status !== 403,
+    call: (c) => c.as.post(`/orgs/${c.orgId}/endpoints/${c.endpointId}/rollback`, {}),
+  },
+  {
+    name: 'GET approvals',
+    permission: 'approval:read',
+    call: (c) => c.as.get(`/orgs/${c.orgId}/approvals`),
+  },
+  {
+    name: 'POST approve',
+    permission: 'approval:decide',
+    allowedIf: (res) => res.status !== 403,
+    call: (c) => c.as.post(`/orgs/${c.orgId}/approvals/${c.versionId}/approve`, {}),
+  },
+  {
+    name: 'POST reject',
+    permission: 'approval:decide',
+    allowedIf: (res) => res.status !== 403,
+    call: (c) => c.as.post(`/orgs/${c.orgId}/approvals/${c.versionId}/reject`, { reason: 'x' }),
+  },
   {
     name: 'DELETE api key',
     permission: 'apikey:manage',

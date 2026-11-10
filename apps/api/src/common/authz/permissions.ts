@@ -42,6 +42,10 @@ export const PERMISSIONS = {
   'dataset:create': WRITERS,
   'evaluation:run': WRITERS,
   'model:promote': ADMINS,
+  // M8: releases (staging: writers; production: the services also require Owner/Admin)
+  'release:manage': WRITERS,
+  'approval:read': ALL,
+  'approval:decide': ADMINS,
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Permission = keyof typeof PERMISSIONS;

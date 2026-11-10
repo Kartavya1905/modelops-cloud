@@ -25,6 +25,7 @@ erDiagram
   MODEL_VERSION ||--o{ DEPLOYMENT_REVISION : "deployed as"
   DEPLOYMENT_REVISION ||--o{ DEPLOYMENT_EVENT : emits
   DEPLOYMENT_REVISION ||--o| APPROVAL : requires
+  DEPLOYMENT_REVISION ||--o{ CANARY_CHECK : "judged by"
   ENDPOINT ||--o{ DRIFT_REPORT : has
   ENDPOINT ||--o{ PREDICTION_RECORD : logs
   PREDICTION_RECORD ||--o| PREDICTION_FEEDBACK : receives
@@ -192,7 +193,23 @@ erDiagram
     timestamptz ready_at
     timestamptz retired_at
     uuid previous_revision_id FK
+    enum strategy "IMMEDIATE CANARY (M8)"
+    int canary_weight "requested share, CANARY only"
+    timestamptz stable_at "last time it became stable: rollback targets"
+    uuid rollback_of_id "slow rollback of (skips approval)"
     uuid requested_by FK
+    timestamptz created_at
+  }
+  CANARY_CHECK {
+    uuid id PK
+    uuid org_id FK
+    uuid endpoint_id FK
+    uuid revision_id FK
+    enum verdict "PASS FAIL INCONCLUSIVE"
+    jsonb metrics "canary vs stable: requests, errors, p95, fallbacks"
+    jsonb checks "rule, passed, detail"
+    jsonb policy "snapshot of the project's canary policy"
+    boolean aborted
     timestamptz created_at
   }
   DEPLOYMENT_EVENT {
@@ -279,6 +296,10 @@ Two infrastructure tables are not drawn above to keep the diagram readable:
 | Revisions can only reference a validated model version | API check + worker re-check + trigger that rejects insert when `model_versions.status <> 'VALIDATED'` |
 | Canary weight in range | `CHECK (canary_weight BETWEEN 0 AND 50)` |
 | `canary_weight > 0` only if a canary revision is set | `CHECK (canary_weight = 0 OR canary_revision_id IS NOT NULL)` |
+| The canary belongs to the endpoint, is READY/DEGRADED, and is never the stable revision (M8) | trigger `endpoints_canary_guard` + `CHECK (canary_revision_id <> stable_revision_id)` |
+| Four eyes: nobody decides on their own deployment (M8) | `CHECK (decided_by_id <> requested_by_id)` on `approvals` |
+| A production revision is queued only with an APPROVED approval (or as a slow rollback of a version that served there) (M8) | trigger `deployment_revisions_approval_guard` |
+| Canary checks are evidence (M8) | `BEFORE UPDATE` trigger (never edited) |
 | Audit log is append-only | `BEFORE UPDATE OR DELETE` trigger raising an exception; app DB role has no `UPDATE/DELETE` grant on `audit_events` |
 | Idempotency keys unique per tenant | `PRIMARY KEY (org_id, key)` |
 | Artifacts are immutable | `artifact_sha256` is never updated (trigger); storage keys are content-addressed `sha256/<hash>/model.onnx` |

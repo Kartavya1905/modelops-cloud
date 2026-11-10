@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { Redis } from 'ioredis';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import type { Prisma } from '../../generated/prisma/client';
 import { REDIS } from '../../common/redis/redis.module';
 import { containerName } from './runtime/runtime-driver';
 
@@ -43,6 +44,12 @@ export interface RoutedEndpoint {
   captureInputs: boolean;
   /** null: the endpoint exists but nothing is READY (the gateway answers 503, not 404). */
   revision: RoutedRevision | null;
+  /**
+   * M8: a READY canary and its share (1-50 %). The gateway sends a request to it when
+   * `fnv1a(X-Routing-Key ?? request id) % 100 < weight`, and falls back to `revision` if the
+   * canary's circuit is open. null: no canary, or weight 0.
+   */
+  canary: { revision: RoutedRevision; weight: number } | null;
 }
 
 export interface RoutingSnapshot {
@@ -69,6 +76,25 @@ interface SignatureJson {
   outputs: { name: string; classes?: (number | string)[] }[];
 }
 
+type RevisionWithModel = Prisma.DeploymentRevisionGetPayload<{
+  include: { modelVersion: { include: { model: { select: { name: true } } } } };
+}>;
+
+function routed(rev: RevisionWithModel): RoutedRevision | null {
+  const sig = rev.modelVersion.signature as unknown as SignatureJson | undefined;
+  if (!sig) return null;
+  return {
+    id: rev.id,
+    url: `http://${containerName(rev.id)}:8000`,
+    modelVersionId: rev.modelVersionId,
+    modelName: rev.modelVersion.model.name,
+    modelVersion: rev.modelVersion.version,
+    framework: rev.modelVersion.framework,
+    features: sig.inputs[0]?.features ?? [],
+    classes: sig.outputs.find((o) => o.classes)?.classes ?? [0, 1],
+  };
+}
+
 /** Builds snapshots from Postgres (the truth) and publishes them to Redis. */
 @Injectable()
 export class DataPlanePublisher {
@@ -80,19 +106,21 @@ export class DataPlanePublisher {
   ) {}
 
   async buildRouting(): Promise<RoutingSnapshot> {
+    const withModel = {
+      include: { modelVersion: { include: { model: { select: { name: true } } } } },
+    } as const;
     const endpoints = await this.prisma.endpoint.findMany({
       orderBy: { id: 'asc' },
-      include: {
-        stableRevision: {
-          include: { modelVersion: { include: { model: { select: { name: true } } } } },
-        },
-      },
+      include: { stableRevision: withModel, canaryRevision: withModel },
     });
     const out: Record<string, RoutedEndpoint> = {};
     for (const e of endpoints) {
       // Only a READY revision receives traffic (docs/05 §7 "Safety"); DEGRADED is healing.
-      const rev = e.stableRevision?.state === 'READY' ? e.stableRevision : null;
-      const sig = rev?.modelVersion.signature as unknown as SignatureJson | undefined;
+      const stable = e.stableRevision?.state === 'READY' ? routed(e.stableRevision) : null;
+      const canary =
+        e.canaryRevision?.state === 'READY' && e.canaryWeight > 0 && stable
+          ? routed(e.canaryRevision)
+          : null;
       out[`${e.projectId}/${e.slug}`] = {
         endpointId: e.id,
         orgId: e.orgId,
@@ -100,19 +128,8 @@ export class DataPlanePublisher {
         slug: e.slug,
         rateLimitRps: e.rateLimitRps,
         captureInputs: e.captureInputs,
-        revision:
-          rev && sig
-            ? {
-                id: rev.id,
-                url: `http://${containerName(rev.id)}:8000`,
-                modelVersionId: rev.modelVersionId,
-                modelName: rev.modelVersion.model.name,
-                modelVersion: rev.modelVersion.version,
-                framework: rev.modelVersion.framework,
-                features: sig.inputs[0]?.features ?? [],
-                classes: sig.outputs.find((o) => o.classes)?.classes ?? [0, 1],
-              }
-            : null,
+        revision: stable,
+        canary: canary ? { revision: canary, weight: e.canaryWeight } : null,
       };
     }
     const hash = createHash('sha256').update(JSON.stringify(out)).digest('hex');

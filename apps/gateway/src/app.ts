@@ -13,6 +13,7 @@ import {
 import { CircuitBreaker, type FieldError, RateLimiter, toMatrix } from './guards.js';
 import type { KeyVerifier } from './keys.js';
 import type { RoutingTable } from './routing.js';
+import { pickRevision } from './split.js';
 
 export interface Deps {
   config: GatewayConfig;
@@ -29,6 +30,8 @@ export interface Deps {
 }
 
 const REQUEST_ID = /^[A-Za-z0-9._-]{8,128}$/;
+/** Sticky canary assignment key (e.g. a customer id); never logged or stored. */
+const ROUTING_KEY = /^[!-~]{1,128}$/;
 const SLUG = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/;
 /** Playground calls per user per second, per endpoint (it's for trying things, not load). */
 export const PLAYGROUND_RPS = 5;
@@ -69,6 +72,7 @@ export function createMetrics(): {
   upstream: Histogram<'revision'>;
   rateLimitFailOpen: PromCounter;
   eventsDropped: PromCounter;
+  canaryFallback: PromCounter<'endpoint_id' | 'revision' | 'source'>;
 } {
   const registry = new Registry();
   collectDefaultMetrics({ register: registry, prefix: 'gateway_' });
@@ -102,6 +106,12 @@ export function createMetrics(): {
     eventsDropped: new PromCounter({
       name: 'gateway_events_dropped_total',
       help: 'Prediction/feedback events that could not be written to the stream',
+      registers: [registry],
+    }),
+    canaryFallback: new PromCounter({
+      name: 'gateway_canary_fallback_total',
+      help: 'Requests bucketed to a canary whose circuit was open, served by stable instead (M8)',
+      labelNames: ['endpoint_id', 'revision', 'source'],
       registers: [registry],
     }),
   };
@@ -172,9 +182,29 @@ export function createPredictor(deps: Deps, metrics: Metrics) {
     endpoint: RoutedEndpoint,
     opts: { rateKey: string; limitRps: number; source: 'api' | 'playground'; started: number },
   ) {
-    const rev = endpoint.revision;
-    if (!rev) {
+    const header = req.headers['x-routing-key'];
+    const routingKey = typeof header === 'string' && ROUTING_KEY.test(header) ? header : req.id;
+    const picked = pickRevision(endpoint, routingKey);
+    if (!picked) {
       return problem(reply, 503, 'NO_READY_REVISION', 'No revision is serving this endpoint');
+    }
+    let rev = picked.revision;
+    let role = picked.role;
+    // canPass() hands out the half-open trial, so it is asked once per request and revision.
+    let breakerChecked = false;
+    // A canary whose circuit is open never fails a request on its own: stable serves it, and the
+    // fallback counts against the canary in the analysis (docs/05 §6).
+    if (role === 'canary' && endpoint.revision) {
+      breakerChecked = breaker.canPass(rev.id);
+    }
+    if (role === 'canary' && endpoint.revision && !breakerChecked) {
+      metrics.canaryFallback.inc({
+        endpoint_id: endpoint.endpointId,
+        revision: rev.id,
+        source: opts.source,
+      });
+      rev = endpoint.revision;
+      role = 'stable';
     }
     const labels = {
       endpoint_id: endpoint.endpointId,
@@ -211,7 +241,7 @@ export function createPredictor(deps: Deps, metrics: Metrics) {
         parsed.errors,
       );
     }
-    if (!breaker.canPass(rev.id)) {
+    if (!breakerChecked && !breaker.canPass(rev.id)) {
       done(503);
       return problem(
         reply,
@@ -286,7 +316,10 @@ export function createPredictor(deps: Deps, metrics: Metrics) {
       },
       'predict',
     );
-    reply.header('X-Model-Version', String(rev.modelVersion)).header('X-Revision-Id', rev.id);
+    reply
+      .header('X-Model-Version', String(rev.modelVersion))
+      .header('X-Revision-Id', rev.id)
+      .header('X-Traffic-Role', role);
     return {
       predictionIds: ids,
       model: { name: rev.modelName, version: rev.modelVersion, framework: rev.framework },

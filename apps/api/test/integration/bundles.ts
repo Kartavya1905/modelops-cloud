@@ -8,7 +8,8 @@ import { join } from 'node:path';
 
 const DIR = join(process.cwd(), '..', '..', 'tests', 'fixtures', 'bundles');
 
-export type BundleKind = 'sklearn' | 'pytorch';
+/** latent-nan (M8): the sklearn model with NaN probabilities when late_payments is 0. */
+export type BundleKind = 'sklearn' | 'pytorch' | 'latent-nan';
 
 export interface Bundle {
   framework: 'SKLEARN_ONNX' | 'PYTORCH_ONNX';

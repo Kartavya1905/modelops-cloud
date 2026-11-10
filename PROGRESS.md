@@ -31,8 +31,8 @@ Legend: ✅ done · 🚧 in progress · ⬜ not started
 | M4 | Model validation and artifact storage | ✅ | [m4-validation-artifacts.md](docs/milestones/m4-validation-artifacts.md): validator 31 (Linux image), ML 32, unit 57 + 35, integration 172/172, e2e 6/6, smoke 20/20 (2026-11-04); **CI green on Linux**: [run 41886510397](https://github.com/Kartavya1905/modelops-cloud/actions/runs/41886510397) |
 | M5 | Inference deployment pipeline | ✅ | [m5-deployment-pipeline.md](docs/milestones/m5-deployment-pipeline.md): unit 214 + 12 + 35, model server 14, integration 221/221 (real Docker), e2e 7/7, smoke 23/23 (2026-11-04); **CI green on Linux**: [run 42692477539](https://github.com/Kartavya1905/modelops-cloud/actions/runs/42692477539) |
 | M6 | Playground and operational dashboard | ✅ | [m6-playground-dashboard.md](docs/milestones/m6-playground-dashboard.md): unit 229 + 13 + 43, integration 242/242 incl. k6 count == dashboard count, e2e 8/8, smoke 24/24 (2026-11-09); **CI green on Linux**: [run 42749620276](https://github.com/Kartavya1905/modelops-cloud/actions/runs/42749620276) |
-| M7 | Drift monitoring and evaluation | 🚧 | [m7-drift-evaluation.md](docs/milestones/m7-drift-evaluation.md): unit 255 + 17 + 43, ML 34, ml-worker 40, integration 285/285 incl. data drift vs concept drift and the champion gate (API + DB trigger), e2e 9/9, smoke 25/25 (2026-11-10, local). Not committed yet; CI pending |
-| M8 | Canary and rollback | ⬜ | — |
+| M7 | Drift monitoring and evaluation | ✅ | [m7-drift-evaluation.md](docs/milestones/m7-drift-evaluation.md): unit 255 + 17 + 43, ML 34, ml-worker 40, integration 285/285 incl. data drift vs concept drift and the champion gate (API + DB trigger), e2e 9/9, smoke 25/25 (2026-11-10); **CI green on Linux**: [run 42836362934](https://github.com/Kartavya1905/modelops-cloud/actions/runs/42836362934) |
+| M8 | Canary and rollback | 🚧 | [m8-canary-rollback.md](docs/milestones/m8-canary-rollback.md): unit 271 + 22 + 50, model server 15, integration 331/331 incl. 10 000-request split (9.75 % / 10.06 % at 10 %), fast rollback 85–87 ms, broken canary aborted with errors only in its share, four eyes in API + DB; e2e 10/10 (2026-11-10, local). Not committed yet; CI pending |
 | M9 | Reliability and security hardening | ⬜ | — |
 | M10 | kind and observability | ⬜ | — |
 | M11 | CI/CD and Terraform (validate-only) | ⬜ | — |
@@ -52,10 +52,13 @@ Legend: ✅ done · 🚧 in progress · ⬜ not started
 - [x] Dependency age rule → newest stable **≥ 7 days old** (ADR-0007 addendum 2)
 - [x] Outbox + idempotency tables → deferred from M2 to **M5**, where they are first used
 - [x] scikit-learn ONNX parity (risk R6) → scaler removed from the GBM pipeline; parity 3e-7
-- [x] MLflow aliases → `champion` done in **M7** (only via a passed evaluation gate, DB trigger); `challenger` with canaries in **M8**
+- [x] MLflow aliases → `champion` done in **M7** (only via a passed evaluation gate, DB trigger); no `challenger` alias (see below)
 - [x] Evidently 0.7.23 needs pandas < 3 → ml-worker pins pandas 2.3.3; training keeps 3.1.0 (risk R5)
 - [x] Evaluations and drift checks → synchronous API calls with append-only reports; hourly drift in the worker (M7 deviation)
 - [x] Synthetic generator → `churn-v2` (stronger concept-drift knob; v1 data unchanged at knob 0)
+- [x] Release actions → `If-Match` on the endpoint instead of Idempotency-Key (M8)
+- [x] Rollback targets → only revisions that served as stable (`stable_at`; an aborted canary never qualifies)
+- [x] `challenger` alias → not needed: a canary is an endpoint revision (M8)
 - [x] Bundle upload → direct multipart to the API with hard limits instead of presigned URLs (M4 deviation; revisit in M9)
 - [x] Validation queue → version status as the durable intent + sweeper, no outbox table (ADR-0004 addendum); outbox still in **M5**
 - [x] SEC-6 (deploy-unvalidated trigger) → done in M5 (trigger + API + worker checks)
@@ -66,5 +69,5 @@ Legend: ✅ done · 🚧 in progress · ⬜ not started
 - [x] Playground → gateway internal route instead of a stored internal API key (no secret at rest)
 
 ## Next actions
-1. M7: push, then record the green CI run
-2. M8: canary releases, rollback, approvals
+1. M8: push, then record the green CI run
+2. M9: reliability testing and security hardening

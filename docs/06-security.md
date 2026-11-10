@@ -90,7 +90,7 @@ V8–V10 run in a **child process** with a CPU-time limit and memory cap. The ML
 | Grant/revoke Owner, delete org | ✅ | ❌ | ❌ | ❌ |
 | Read audit log | ✅ | ✅ | ❌ | ❌ |
 
-Implementation: a `@RequirePermission('deployment:approve')` decorator with a `PermissionsGuard`, plus a role → permission map in one file (`apps/api/src/common/authz/permissions.ts`). The permission table above is **generated from that file** in CI, so docs and code cannot diverge.
+Implementation (M8 names: `approval:decide`, `release:manage`): a `@RequirePermission(...)` decorator with a `PermissionsGuard`, plus a role → permission map in one file (`apps/api/src/common/authz/permissions.ts`). The permission table above is **generated from that file** in CI, so docs and code cannot diverge.
 
 ## 4. Authentication details
 
@@ -135,7 +135,7 @@ Implementation: a `@RequirePermission('deployment:approve')` decorator with a `P
 | SEC-6 | Deploy unvalidated version | Direct `POST /revisions` with `PENDING_VALIDATION` id | `422 MODEL_NOT_VALIDATED`; DB trigger blocks even if the API check is bypassed |
 | SEC-7 | Cross-tenant IDOR | User of org B requests org A's model id with org B's orgId and with org A's orgId | `404` both ways |
 | SEC-8 | Role escalation | ML Engineer approves own production request; Admin grants Owner | `403` |
-| SEC-9 | Self-approval | Admin approves an approval they requested | `403 SELF_APPROVAL_NOT_ALLOWED` |
+| SEC-9 | Self-approval | Admin approves an approval they requested | `403 SELF_APPROVAL` (M8: tested; the same shortcut in SQL hits the CHECK `approvals_four_eyes`, and queueing a production revision without an APPROVED row hits a trigger) |
 | SEC-10 | Revoked / expired API key | Call predict with a revoked key | `401` within the key-cache TTL (≤ 30 s) |
 | SEC-11 | API key of another project | Key from project X on project Y's endpoint | `404` |
 | SEC-12 | CSRF | Cross-site form POST without token | `403 CSRF_TOKEN_INVALID` |

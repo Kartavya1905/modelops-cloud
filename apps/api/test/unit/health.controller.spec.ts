@@ -60,6 +60,7 @@ async function bootWith(checks: DependencyCheck[]): Promise<INestApplication> {
       relayMs: 500,
       reconcileMs: 1000,
       drainGraceMs: 0,
+      canaryAnalysisMs: 15_000,
       instanceId: 'unit',
     },
   };

@@ -47,6 +47,7 @@ const ConfigSchema = z.object({
   MO_DEPLOY_RELAY_MS: z.coerce.number().int().min(50).max(60_000).default(500),
   MO_RECONCILE_MS: z.coerce.number().int().min(200).max(600_000).default(15_000),
   MO_DRAIN_GRACE_MS: z.coerce.number().int().min(0).max(86_400_000).default(1_800_000),
+  MO_CANARY_ANALYSIS_MS: z.coerce.number().int().min(200).max(600_000).default(15_000),
   // M6: dashboards read Prometheus through allow-listed queries only
   MO_PROMETHEUS_URL: z.url({ protocol: /^https?$/ }).default('http://127.0.0.1:19090'),
   // M7: monitoring
@@ -105,6 +106,8 @@ export interface AppConfig {
     relayMs: number;
     reconcileMs: number;
     drainGraceMs: number;
+    /** M8: how often the worker analyses running canaries */
+    canaryAnalysisMs: number;
     instanceId: string;
   };
 }
@@ -170,6 +173,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       relayMs: c.MO_DEPLOY_RELAY_MS,
       reconcileMs: c.MO_RECONCILE_MS,
       drainGraceMs: c.MO_DRAIN_GRACE_MS,
+      canaryAnalysisMs: c.MO_CANARY_ANALYSIS_MS,
       instanceId: c.MO_INSTANCE_ID,
     },
   };

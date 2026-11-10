@@ -3,7 +3,7 @@ import type { RevisionState } from '../../generated/prisma/client';
 /**
  * Revision state machine (docs/05 §2). This table is the only definition of legal transitions:
  * the CAS helper refuses anything not listed here, and the unit tests walk every pair.
- * AWAITING_APPROVAL exists in the schema for M8 (production approvals) and is not used yet.
+ * AWAITING_APPROVAL (M8): production deployments wait there for a second Owner/Admin.
  */
 export const TRANSITIONS: Record<RevisionState, readonly RevisionState[]> = {
   REQUESTED: ['QUEUED', 'AWAITING_APPROVAL', 'CANCELLED', 'FAILED'],
@@ -45,6 +45,7 @@ export const RUNNING: readonly RevisionState[] = [
 /** A user may cancel before the revision serves traffic (VERIFYING is too late: it's seconds away). */
 export const CANCELLABLE: readonly RevisionState[] = [
   'REQUESTED',
+  'AWAITING_APPROVAL',
   'QUEUED',
   'PROVISIONING',
   'LOADING',
@@ -53,6 +54,7 @@ export const CANCELLABLE: readonly RevisionState[] = [
 /** Liveness: every in-progress state has a deadline; the reconciler fails anything past it. */
 export const STATE_DEADLINE_MS: Partial<Record<RevisionState, number>> = {
   REQUESTED: 10 * 60_000, // the relay normally takes < 1 s; this only catches a stuck outbox
+  AWAITING_APPROVAL: 24 * 60 * 60_000, // then the approval expires (CANCELLED, not FAILED)
   QUEUED: 10 * 60_000,
   PROVISIONING: 120_000,
   LOADING: 120_000,
@@ -72,6 +74,9 @@ export const FAILURE_CODES = [
   'TIMEOUT',
   'RESTART_BUDGET_EXHAUSTED',
   'CANCELLED_BY_USER',
+  'APPROVAL_REJECTED',
+  'APPROVAL_EXPIRED',
+  'CANARY_ABORTED',
 ] as const;
 export type FailureCode = (typeof FAILURE_CODES)[number];
 

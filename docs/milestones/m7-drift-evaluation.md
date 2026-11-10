@@ -1,6 +1,6 @@
 # Milestone 7 — Drift Monitoring and Model Evaluation
 
-> **Status: implemented and verified locally (2026-11-10, Windows 11).** CI on Linux: pending the next push.
+> **Status: done (2026-11-10).** Verified locally on Windows 11 and in CI on Linux: [run 42836362934](https://github.com/Kartavya1905/modelops-cloud/actions/runs/42836362934). All five jobs passed on the first run; the stack job (integration incl. the drift and gate scenarios, smoke, e2e) took 8.1 minutes, well inside the new 45-minute limit.
 
 ![An endpoint's data drift heatmap and measured performance](../images/m7-monitoring.png)
 
@@ -179,7 +179,7 @@ ESLint (strict), Prettier, ruff, tsc ×5, contract regenerated (unchanged): all 
 | Concept drift lowers measured performance while data drift stays low | ✅ integration: 0 of 6 features drift; accuracy and ROC-AUC fall |
 | **Data drift and concept drift are separate signals** | ✅ two cards, two data sources (inputs vs labels) |
 | **`champion` cannot be set without a passed gate** | ✅ API + Postgres trigger, tested both ways |
-| CI green on Linux | ⏳ after the next push |
+| CI green on Linux | ✅ [run 42836362934](https://github.com/Kartavya1905/modelops-cloud/actions/runs/42836362934) |
 
 ## L. Completion checklist
 
@@ -191,4 +191,4 @@ ESLint (strict), Prettier, ruff, tsc ×5, contract regenerated (unchanged): all 
 - [x] UI: datasets, evaluations, champion, capture toggle, drift heatmap, performance
 - [x] `pnpm demo:drift`
 - [x] Unit, component, integration, e2e + axe, smoke
-- [ ] Green CI run on Linux
+- [x] Green CI run on Linux

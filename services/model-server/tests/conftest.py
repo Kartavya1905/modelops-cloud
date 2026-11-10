@@ -55,6 +55,49 @@ def logistic_model_bytes() -> bytes:
     return model.SerializeToString()
 
 
+def latent_nan_model_bytes() -> bytes:
+    """Like the logistic model, but probabilities become NaN whenever feature 4 is below 0.5:
+    probabilities * (sqrt(f4 - 0.5) * 0 + 1). A latent numerical bug, as in the M8 canary demo."""
+    rng = np.random.default_rng(0)
+    w = numpy_helper.from_array(rng.normal(size=(6, 2)).astype(np.float32), "W")
+    b = numpy_helper.from_array(np.array([0.1, -0.1], dtype=np.float32), "B")
+    const = {
+        name: numpy_helper.from_array(np.array(v, dtype=dtype), name)
+        for name, v, dtype in [
+            ("starts", [4], np.int64),
+            ("ends", [5], np.int64),
+            ("axes", [1], np.int64),
+            ("half", 0.5, np.float32),
+            ("zero", 0.0, np.float32),
+            ("one", 1.0, np.float32),
+        ]
+    }
+    graph = helper.make_graph(
+        [
+            helper.make_node("MatMul", ["features", "W"], ["z"]),
+            helper.make_node("Add", ["z", "B"], ["logits"]),
+            helper.make_node("Softmax", ["logits"], ["p_raw"], axis=1),
+            helper.make_node("Slice", ["features", "starts", "ends", "axes"], ["f4"]),
+            helper.make_node("Sub", ["f4", "half"], ["shifted"]),
+            helper.make_node("Sqrt", ["shifted"], ["root"]),
+            helper.make_node("Mul", ["root", "zero"], ["nan_or_zero"]),
+            helper.make_node("Add", ["nan_or_zero", "one"], ["factor"]),
+            helper.make_node("Mul", ["p_raw", "factor"], ["probabilities"]),
+            helper.make_node("ArgMax", ["p_raw"], ["label"], axis=1, keepdims=0),
+        ],
+        "latent_nan",
+        [helper.make_tensor_value_info("features", TensorProto.FLOAT, ["N", 6])],
+        [
+            helper.make_tensor_value_info("label", TensorProto.INT64, ["N"]),
+            helper.make_tensor_value_info("probabilities", TensorProto.FLOAT, ["N", 2]),
+        ],
+        initializer=[w, b, *const.values()],
+    )
+    model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 17)])
+    model.ir_version = 10
+    return model.SerializeToString()
+
+
 MODEL = logistic_model_bytes()
 MODEL_SHA = hashlib.sha256(MODEL).hexdigest()
 

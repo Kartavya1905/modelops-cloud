@@ -10,6 +10,7 @@ import {
   LogOutIcon,
   MenuIcon,
   ScrollTextIcon,
+  ShieldCheckIcon,
   UsersIcon,
 } from 'lucide-react';
 import Link from 'next/link';
@@ -39,6 +40,7 @@ const NAV = [
   { href: '', label: 'Overview', icon: LayoutDashboardIcon, permission: 'org:read' },
   { href: 'projects', label: 'Projects', icon: FolderKanbanIcon, permission: 'project:read' },
   { href: 'members', label: 'Members', icon: UsersIcon, permission: 'member:read' },
+  { href: 'approvals', label: 'Approvals', icon: ShieldCheckIcon, permission: 'approval:read' },
   { href: 'audit', label: 'Audit log', icon: ScrollTextIcon, permission: 'audit:read' },
 ] as const;
 

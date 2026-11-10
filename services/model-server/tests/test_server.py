@@ -25,7 +25,7 @@ from model_server.loader import (
     load,
 )
 
-from .conftest import MODEL, MODEL_SHA, ArtifactServer, env_for
+from .conftest import MODEL, MODEL_SHA, ArtifactServer, env_for, latent_nan_model_bytes
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -138,3 +138,19 @@ def test_invalid_inputs_are_rejected(client: TestClient, payload: dict | str, st
     else:
         res = client.post("/v1/predict", json=payload)
     assert res.status_code == status
+
+
+def test_non_finite_outputs_are_an_explicit_500(artifacts: ArtifactServer) -> None:
+    """A model that is fine on its golden rows but blows up on others answers 500, never NaN."""
+    data = latent_nan_model_bytes()
+    artifacts.blobs["nan.onnx"] = data
+    settings, model = start(
+        artifacts, "nan.onnx", MO_ARTIFACT_SHA256=hashlib.sha256(data).hexdigest()
+    )
+    nan_client = TestClient(create_app(settings, model))
+    ok = nan_client.post("/v1/predict", json={"inputs": [[1, 2, 3, 4, 1, 6]]})
+    assert ok.status_code == 200
+    assert all(np.isfinite(ok.json()["outputs"]["probabilities"][0]))
+    bad = nan_client.post("/v1/predict", json={"inputs": [[1, 2, 3, 4, 0, 6]]})
+    assert bad.status_code == 500
+    assert "non-finite" in bad.json()["detail"]

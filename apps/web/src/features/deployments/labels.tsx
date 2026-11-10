@@ -51,6 +51,7 @@ export const PIPELINE: readonly RevisionState[] = [
 
 export const PIPELINE_HELP: Partial<Record<RevisionState, string>> = {
   REQUESTED: 'Saved durably with the request (outbox)',
+  AWAITING_APPROVAL: 'Production: a second Owner/Admin approves',
   QUEUED: 'Handed to the deployment worker',
   PROVISIONING: 'Starting an isolated container',
   LOADING: 'Downloading the artifact and verifying its SHA-256',

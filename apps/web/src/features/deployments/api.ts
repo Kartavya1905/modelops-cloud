@@ -6,6 +6,7 @@ import { api, unwrap } from '@/lib/api/client';
 import { qk } from '@/lib/query/keys';
 
 const POLL_MS = 2000;
+const CANARY_POLL_MS = 5000;
 const SETTLED: ReadonlySet<RevisionState> = new Set([
   'READY',
   'FAILED',
@@ -44,7 +45,10 @@ export function useEndpoint(orgId: string, endpointId: string) {
       q.state.data?.inProgressRevision ||
       (q.state.data?.stableRevision && q.state.data.stableRevision.state !== 'READY')
         ? POLL_MS
-        : false,
+        : // M8: a running canary is analysed every 15 s and may be aborted automatically.
+          q.state.data?.canary
+          ? CANARY_POLL_MS
+          : false,
   });
 }
 
@@ -69,11 +73,24 @@ export function useDeploy(orgId: string, endpointId: string) {
      * The Idempotency-Key is chosen once per dialog, not per click: a double click or a retry
      * after a network error replays the same request instead of deploying twice.
      */
-    mutationFn: ({ modelVersionId, key }: { modelVersionId: string; key: string }) =>
+    mutationFn: ({
+      modelVersionId,
+      key,
+      strategy,
+      canaryWeight,
+    }: {
+      modelVersionId: string;
+      key: string;
+      strategy?: 'IMMEDIATE' | 'CANARY';
+      canaryWeight?: number;
+    }) =>
       unwrap(
         api.POST('/api/v1/orgs/{orgId}/endpoints/{endpointId}/revisions', {
           params: { path: { orgId, endpointId }, header: { 'Idempotency-Key': key } },
-          body: { modelVersionId },
+          body: {
+            modelVersionId,
+            ...(strategy === 'CANARY' ? { strategy, canaryWeight } : {}),
+          },
         }),
       ),
     meta: { silentError: true },
