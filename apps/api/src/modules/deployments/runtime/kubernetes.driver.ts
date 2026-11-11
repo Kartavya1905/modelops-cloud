@@ -167,7 +167,9 @@ export class KubernetesDriver implements RuntimeDriver {
 
   private pod(spec: RevisionRuntimeSpec): V1Pod {
     const name = containerName(spec.revisionId);
-    const resources = { cpu: String(spec.cpus), memory: `${String(spec.memoryMb)}Mi` };
+    const limits = { cpu: String(spec.cpus), memory: `${String(spec.memoryMb)}Mi` };
+    // Memory is always reserved in full; CPU too unless MO_K8S_CPU_REQUEST asks for less.
+    const requests = { ...limits, cpu: this.config.deploy.runtime.cpuRequest || limits.cpu };
     return {
       metadata: { name, labels: this.labels(spec) },
       spec: {
@@ -187,7 +189,7 @@ export class KubernetesDriver implements RuntimeDriver {
             imagePullPolicy: 'IfNotPresent',
             env: Object.entries(spec.env).map(([k, v]) => ({ name: k, value: v })),
             ports: [{ name: 'http', containerPort: 8000 }],
-            resources: { requests: resources, limits: resources },
+            resources: { requests, limits },
             securityContext: {
               readOnlyRootFilesystem: true,
               allowPrivilegeEscalation: false,

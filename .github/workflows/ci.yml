@@ -492,6 +492,8 @@ jobs:
         if: failure()
         run: |
           kubectl --context kind-modelops get pods -A -o wide || true
+          kubectl --context kind-modelops describe nodes | sed -n '/Allocated resources/,/Events/p' || true
+          kubectl --context kind-modelops get events -A --field-selector reason=FailedScheduling || true
           kubectl --context kind-modelops -n modelops-models get pods,svc,networkpolicy || true
           for d in api worker web gateway; do kubectl --context kind-modelops -n modelops logs deploy/$d --tail 80 || true; done
           kubectl --context kind-modelops get events -A --sort-by=.lastTimestamp | tail -40 || true

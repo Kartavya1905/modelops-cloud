@@ -248,7 +248,7 @@ describe('deploy -> READY -> predict', () => {
         capabilities: { drop: ['ALL'] },
       });
       expect(pod?.spec.containers[0]?.resources).toEqual({
-        requests: { cpu: '500m', memory: '512Mi' },
+        requests: { cpu: '100m', memory: '512Mi' }, // MO_K8S_CPU_REQUEST in the test run
         limits: { cpu: '500m', memory: '512Mi' },
       });
       expect(pod?.metadata.labels['modelops.instance']).toBe(inject('instanceId'));

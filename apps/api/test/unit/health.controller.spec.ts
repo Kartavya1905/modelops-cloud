@@ -69,6 +69,7 @@ async function bootWith(checks: DependencyCheck[]): Promise<INestApplication> {
         namespace: 'modelops-models',
         context: '',
         egress: [],
+        cpuRequest: '',
         modelServerDomain: '',
       },
       instanceId: 'unit',

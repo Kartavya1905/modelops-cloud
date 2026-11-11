@@ -71,6 +71,15 @@ const ConfigSchema = z.object({
       'MO_K8S_EGRESS must be comma-separated cidr:port entries',
     )
     .default(''),
+  /**
+   * CPU *request* of a model-server pod, e.g. "100m". Empty (default): the request equals the
+   * limit (Guaranteed QoS, the CPU is reserved). A smaller request lets more pods schedule on a
+   * small node while the limit still caps each one; the kind test run on 4-CPU CI runners uses it.
+   */
+  MO_K8S_CPU_REQUEST: z
+    .string()
+    .regex(/^(\d+m)?$/, 'MO_K8S_CPU_REQUEST must be millicores, e.g. 100m')
+    .default(''),
   MO_DEPLOY_LOCK_MS: z.coerce.number().int().min(5_000).max(600_000).default(30_000),
   MO_DRAIN_GRACE_MS: z.coerce.number().int().min(0).max(86_400_000).default(1_800_000),
   MO_CANARY_ANALYSIS_MS: z.coerce.number().int().min(200).max(600_000).default(15_000),
@@ -140,6 +149,8 @@ export interface AppConfig {
       namespace: string;
       context: string;
       egress: { cidr: string; port: number }[];
+      /** model-server pod CPU request ('' = equal to the limit) */
+      cpuRequest: string;
       /** DNS suffix of `mo-rev-<id>` ('' on Docker; `<namespace>.svc.cluster.local` on k8s) */
       modelServerDomain: string;
     };
@@ -218,6 +229,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
         driver: c.MO_RUNTIME_DRIVER,
         namespace: c.MO_K8S_NAMESPACE,
         context: c.MO_K8S_CONTEXT,
+        cpuRequest: c.MO_K8S_CPU_REQUEST,
         egress: c.MO_K8S_EGRESS.split(',')
           .map((x) => x.trim())
           .filter(Boolean)

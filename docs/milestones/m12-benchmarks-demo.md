@@ -90,6 +90,7 @@ Everything is in the [benchmark report](../benchmarks/report.md), generated from
 - The first run died at its first API call: the dev server was restarting (connection reset). The runner now retries dropped connections, never HTTP errors.
 - The ramp's p95 and p99 at ~2 000 ms needed an explanation from data, not a guess: the run now records the gateway's status codes over the ramp window (`ramp-codes.json`) and the platform's own state changes (`events.json`), which is how finding 1 was found.
 - The demo video started with a blank frame and showed a 1-hour chart with one minute of data: the recorder now records when the first page is ready (the GIF starts there) and switches the chart to 15 minutes.
+- **First CI run of the M9–M12 push** ([run 43076921779](https://github.com/Kartavya1905/modelops-cloud/actions/runs/43076921779)): every job green except `kind`, where the API-key and tracing tests got 503. The lifecycle suite leaves its revisions running, each model-server pod reserved its full 0.5 CPU, and a 4-CPU runner fits about six of them next to the system pods; the new restart test added one more, so the last two tests' pods could not be scheduled (locally the kind node has 10 CPUs). Fix: `MO_K8S_CPU_REQUEST` (default empty = request equals limit, unchanged); the kind test run requests 100m while limits stay 0.5 CPU. The kind job's failure diagnostics now print the node's allocated resources and scheduling failures.
 
 ## I. Expected behaviour
 

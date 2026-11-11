@@ -40,7 +40,9 @@ const spec: RevisionRuntimeSpec = {
 const apiError = (code: number) => Object.assign(new Error(`HTTP ${String(code)}`), { code });
 
 /** Pods, services and policies by name; pods turn "running" after `startAfter` reads. */
-function fakeCluster(opts: { startAfter?: number; podState?: V1Pod['status'] } = {}) {
+function fakeCluster(
+  opts: { startAfter?: number; podState?: V1Pod['status']; cfg?: typeof config } = {},
+) {
   const pods = new Map<string, V1Pod>();
   const services = new Map<string, V1Service>();
   const policies = new Map<string, V1NetworkPolicy>();
@@ -93,7 +95,7 @@ function fakeCluster(opts: { startAfter?: number; podState?: V1Pod['status'] } =
     deleteNamespacedNetworkPolicy: ({ name }: { name: string }) =>
       policies.delete(name) ? Promise.resolve({}) : Promise.reject(apiError(404)),
   };
-  const driver = new KubernetesDriver(config);
+  const driver = new KubernetesDriver(opts.cfg ?? config);
   Object.assign(driver as unknown as Record<string, unknown>, { core, net });
   return { driver, pods, services, policies, core };
 }
@@ -234,6 +236,21 @@ describe('KubernetesDriver (M10)', () => {
   });
 });
 
+describe('MO_K8S_CPU_REQUEST', () => {
+  it('lowers only the CPU request; the limit and the memory reservation stay', async () => {
+    const cfg = {
+      ...config,
+      deploy: { ...config.deploy, runtime: { ...config.deploy.runtime, cpuRequest: '100m' } },
+    };
+    const { driver, pods } = fakeCluster({ cfg });
+    await driver.ensure(spec);
+    expect(pods.get(`mo-rev-${spec.revisionId}`)?.spec?.containers[0]?.resources).toEqual({
+      requests: { cpu: '100m', memory: '512Mi' },
+      limits: { cpu: '0.5', memory: '512Mi' },
+    });
+  });
+});
+
 describe('MO_K8S_EGRESS', () => {
   const base = {
     DATABASE_URL: 'postgresql://a:b@127.0.0.1:1/x',
@@ -250,6 +267,13 @@ describe('MO_K8S_EGRESS', () => {
     expect(loadConfig({ ...base, MO_K8S_EGRESS: '10.0.0.0/8:443' }).deploy.runtime.egress).toEqual([
       { cidr: '10.0.0.0/8', port: 443 },
     ]);
+  });
+  it('accepts a millicore CPU request and rejects anything else', () => {
+    expect(loadConfig(base).deploy.runtime.cpuRequest).toBe('');
+    expect(loadConfig({ ...base, MO_K8S_CPU_REQUEST: '100m' }).deploy.runtime.cpuRequest).toBe(
+      '100m',
+    );
+    expect(() => loadConfig({ ...base, MO_K8S_CPU_REQUEST: '0.1' })).toThrow(/MO_K8S_CPU_REQUEST/);
   });
   it('rejects a bare CIDR (every egress rule must name its port)', () => {
     expect(() => loadConfig({ ...base, MO_K8S_EGRESS: '10.0.0.0/8' })).toThrow(/MO_K8S_EGRESS/);

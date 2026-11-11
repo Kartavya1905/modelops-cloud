@@ -188,6 +188,9 @@ export function startKindDataPlane(opts: { namespace: string; redisUrl: URL }): 
       MO_K8S_CONTEXT: KIND_CONTEXT,
       MO_K8S_NAMESPACE: ns,
       MO_K8S_EGRESS: `${subnet}:8333,${subnet}:4318`, // S3 and the trace collector only
+      // The suite leaves a dozen model servers running; a 4-CPU CI runner can only reserve ~6
+      // at 500m each. Request 100m (limits stay 500m), so every one of them schedules.
+      MO_K8S_CPU_REQUEST: '100m',
     },
   };
 }
