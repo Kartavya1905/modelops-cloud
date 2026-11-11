@@ -58,7 +58,7 @@ services:
   # --------------------------------------------------------------------- Redis
   redis:
     <<: *hardening
-    image: redis:8.8.4@sha256:6e61ab45b3e867bacbef2fdd969ec74f4e0f8aaca8cc946cb8ac0c494035e7e7
+    image: redis:8.10.2@sha256:97ec88159e6d7cfb5ddef9015386087d58a912de80112f06ebdfa78fa5989901
     user: '999:999' # the image's redis user, owner of /data (M9)
     cap_drop: [ALL]
     read_only: true
