@@ -2,7 +2,7 @@
 #   docker build -f apps/api/Dockerfile -t modelops/api:dev .   (pnpm kind:up does this)
 # API:    node dist/main.js     Worker: node dist/worker.js
 # Migrations are not run from this image: `pnpm kind:up` applies them from the host first.
-FROM node:24.22.2-slim@sha256:01d566e8d94d8c619591d78652babfccd3c6992a3dffa9ed5ab39e11cf6c70e9 AS base
+FROM node:26.12.1-slim@sha256:94816674c62774da0d099a947bf4613b9e1972a2733abd0d0cd80e795f8411d0 AS base
 RUN npm install -g pnpm@12.16.1 --no-fund --no-audit
 WORKDIR /repo
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
@@ -24,7 +24,7 @@ FROM base AS deps
 RUN pnpm install --frozen-lockfile --prod --ignore-scripts --filter @modelops/api
 
 # ---- runtime ----------------------------------------------------------------------------------
-FROM node:24.22.2-slim@sha256:01d566e8d94d8c619591d78652babfccd3c6992a3dffa9ed5ab39e11cf6c70e9 AS runtime
+FROM node:26.12.1-slim@sha256:94816674c62774da0d099a947bf4613b9e1972a2733abd0d0cd80e795f8411d0 AS runtime
 ENV NODE_ENV=production
 WORKDIR /repo
 COPY --from=deps /repo/node_modules ./node_modules
