@@ -1,0 +1,29 @@
+# M10: Tempo, single binary, local storage. Laptop-sized: 24 h of traces.
+stream_over_http_enabled: true
+
+server:
+  http_listen_port: 3200
+  log_level: warn
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+
+# Tempo 3: compaction and retention moved from `compactor:` to the backend worker.
+backend_worker:
+  compaction:
+    block_retention: 24h
+
+storage:
+  trace:
+    backend: local
+    wal:
+      path: /var/tempo/wal
+    local:
+      path: /var/tempo/blocks
+
+usage_report:
+  reporting_enabled: false

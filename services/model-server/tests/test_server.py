@@ -154,3 +154,30 @@ def test_non_finite_outputs_are_an_explicit_500(artifacts: ArtifactServer) -> No
     bad = nan_client.post("/v1/predict", json={"inputs": [[1, 2, 3, 4, 0, 6]]})
     assert bad.status_code == 500
     assert "non-finite" in bad.json()["detail"]
+
+
+def test_predict_continues_the_gateway_trace(artifacts: ArtifactServer, monkeypatch) -> None:
+    """M10: with a traceparent from the gateway, the predict span joins that trace."""
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+    from model_server.tracing import instrument
+
+    monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
+    settings, model = start(artifacts)
+    exporter = InMemorySpanExporter()
+    app = create_app(settings, model)  # not instrumented: no endpoint configured
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://unused:4318")
+    assert instrument(app, "rev-1", "mv-1", exporter=exporter)
+    trace_id, parent = "4bf92f3577b34da6a3ce929d0e0e4736", "00f067aa0ba902b7"
+    res = TestClient(app).post(
+        "/v1/predict",
+        json={"inputs": [[0.1, 0.2, 0.3, 0.4, 0.5, 0.6]]},
+        headers={"traceparent": f"00-{trace_id}-{parent}-01"},
+    )
+    assert res.status_code == 200
+    spans = [s for s in exporter.get_finished_spans() if s.kind.name == "SERVER"]
+    assert spans, "no server span"
+    span = spans[0]
+    assert format(span.context.trace_id, "032x") == trace_id
+    assert format(span.parent.span_id, "016x") == parent
+    assert span.resource.attributes["modelops.revision_id"] == "rev-1"

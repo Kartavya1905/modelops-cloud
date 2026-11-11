@@ -12,9 +12,9 @@
 | R4 | **Prisma major transition**: npm `latest` currently points to an 8.0 **RC** | M | M | Pin newest **stable 7.x**; re-check at M2 | 8.0 GA with needed fixes → upgrade in a dedicated PR |
 | R5 | **Evidently API churn** (major API rework in 0.7.x) | M | L | Wrapped behind `services/ml-worker/ml_worker/drift.py`; pinned `evidently==0.7.23`; tests on outputs (an injected shift is found, a same-distribution sample is not), not internals. **Seen in M7:** 0.7.23 breaks on pandas 3 (`infer_dtype_from_object` removed), so the ml-worker pins pandas 2.3.3 | Breakage → compute PSI/KS directly with scipy (already a dependency) |
 | R6 | **skl2onnx lag** behind scikit-learn releases | Confirmed | M | **Hit in M3:** the parity check caught a 4.3e-2 difference caused by float32/float64 scaling, not a converter bug. Fixed by removing the scaler; parity tests guard every export | Converter fails → pin sklearn one minor lower |
-| R7 | **Docker socket = root on the host** | M | H | Socket proxy limited to container/image/network endpoints; only the worker can reach it; Kubernetes driver uses namespaced RBAC | Documented as accepted local-dev risk |
+| R7 | **Docker socket = root on the host** | M | H | Socket proxy limited to container/image/network endpoints; only the worker can reach it; Kubernetes driver uses namespaced RBAC | Documented as accepted local-dev risk. **M10:** on kind the worker holds a Role limited to one namespace (no exec, no secrets), so this path no longer needs the socket |
 | R8 | **Windows-specific issues** (CRLF, paths, file watching in WSL, `python` Store alias) | H | L | `.gitattributes` LF, scripts in both PowerShell and bash, run services in containers, `py` launcher | Fix in setup docs on first occurrence |
-| R9 | **RAM pressure** with Compose + kind + training | L | M | 31 GB available; observability as an optional profile; never run kind and full Compose together | `docker stats` > 12 GB → stop observability profile |
+| R9 | **RAM pressure** with Compose + kind + training | L | M | 31 GB available; observability as an optional profile; kind runs only the control plane and model servers, the data services stay single copies in Compose | `docker stats` > 12 GB → stop observability profile. **Measured in M10:** kind node 2.9 GiB (4 platform pods + 5 model servers) next to the full Compose stack with observability |
 | R10 | **Flaky end-to-end and lifecycle tests** (timing) | H | M | Poll-until-deadline helpers (no fixed sleeps), deterministic seeds, Playwright traces on failure | > 2% flake rate → quarantine + fix before new features |
 | R11 | **MLflow 3 changes** (model stages deprecated in favour of aliases) | M | L | Use aliases (`champion`/`challenger`) from day one; adapter module isolates the MLflow REST API | — |
 | R12 | **Secret committed to git** | L | H | gitleaks pre-commit + CI; `.env` gitignored; generated secrets | Leak → rotate + `git filter-repo` + note in security doc |
@@ -30,7 +30,7 @@ If time runs short, cut from the **top** of this list first. Each cut keeps the 
 | Order | Cut | What remains | Impact on the story |
 |---|---|---|---|
 | 1 | Tempo / distributed tracing | Prometheus metrics + structured logs with request ids | Low |
-| 2 | Postgres RLS + audit hash chain | App-level tenancy + append-only trigger | Low |
+| 2 | Postgres RLS + audit hash chain | App-level tenancy + append-only trigger | Low. **M9:** the hash chain was built; RLS was cut (needs a transaction around every query to carry the tenant; see the M9 doc) |
 | 3 | Terraform modules | Written AWS design doc + cost estimate | Low–Medium |
 | 4 | Kubernetes driver on kind | Docker driver; kind manifests for platform services only | Medium |
 | 5 | Automated canary analysis | Manual canary weight + promote/rollback + side-by-side dashboard | Medium |

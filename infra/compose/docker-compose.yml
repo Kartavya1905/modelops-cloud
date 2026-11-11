@@ -23,13 +23,21 @@ services:
   # ---------------------------------------------------------------- PostgreSQL
   postgres:
     <<: *hardening
-    image: postgres:18.6
+    image: postgres:18.6@sha256:e3d24f6906d0760bf4da0dae872415391ededefad23fd471c47dc53b0ddf3c42
+    # M9: the image's own postgres user (999, owner of the data volume) from the first process
+    # on, so the entrypoint never needs root; no capabilities, read-only root filesystem.
+    user: '999:999'
+    cap_drop: [ALL]
+    read_only: true
+    tmpfs: [/tmp, /var/run/postgresql]
     environment:
       POSTGRES_PASSWORD: ${MO_POSTGRES_SUPERUSER_PASSWORD:?run pnpm env:init}
       MO_DB_APP_USER: ${MO_DB_APP_USER:?}
       MO_DB_APP_PASSWORD: ${MO_DB_APP_PASSWORD:?}
       MO_DB_MLFLOW_USER: ${MO_DB_MLFLOW_USER:?}
       MO_DB_MLFLOW_PASSWORD: ${MO_DB_MLFLOW_PASSWORD:?}
+      MO_DB_GRAFANA_USER: ${MO_DB_GRAFANA_USER:?run pnpm env:init}
+      MO_DB_GRAFANA_PASSWORD: ${MO_DB_GRAFANA_PASSWORD:?run pnpm env:init}
     volumes:
       # Postgres 18 images keep data under /var/lib/postgresql/<major>/docker.
       - pgdata:/var/lib/postgresql
@@ -44,13 +52,17 @@ services:
       start_period: 10s
     deploy:
       resources:
-        limits: { cpus: '1.0', memory: 512M }
+        limits: { cpus: '1.0', memory: 512M, pids: 512 }
     networks: [backend]
 
   # --------------------------------------------------------------------- Redis
   redis:
     <<: *hardening
-    image: redis:8.8.4
+    image: redis:8.8.4@sha256:6e61ab45b3e867bacbef2fdd969ec74f4e0f8aaca8cc946cb8ac0c494035e7e7
+    user: '999:999' # the image's redis user, owner of /data (M9)
+    cap_drop: [ALL]
+    read_only: true
+    tmpfs: [/tmp]
     # noeviction is required by BullMQ: evicting queue keys would silently lose jobs.
     command:
       - redis-server
@@ -75,13 +87,17 @@ services:
       retries: 20
     deploy:
       resources:
-        limits: { cpus: '0.5', memory: 256M }
+        limits: { cpus: '0.5', memory: 256M, pids: 512 }
     networks: [backend]
 
   # ------------------------------------------------- Object storage (SeaweedFS)
   seaweedfs:
     <<: *hardening
-    image: chrislusf/seaweedfs:4.52
+    image: chrislusf/seaweedfs:4.52@sha256:57877e32bb90073b37dc109b438ba66e84fd5ed9ced5f5c04f56444ef243ce59
+    user: '1000:1000' # owner of /data in the image (M9); the identity file goes to tmpfs /tmp
+    cap_drop: [ALL]
+    read_only: true
+    tmpfs: [/tmp]
     # The S3 identity file is rendered from environment variables at start-up,
     # so the only place credentials live is the gitignored .env file.
     entrypoint: ['/bin/sh', '-ec']
@@ -114,7 +130,7 @@ services:
       start_period: 10s
     deploy:
       resources:
-        limits: { cpus: '1.0', memory: 512M }
+        limits: { cpus: '1.0', memory: 512M, pids: 512 }
     networks: [backend, inference]
 
   # One-shot job: create the platform's buckets (idempotent), then exit 0.
@@ -187,7 +203,7 @@ services:
       start_period: 30s
     deploy:
       resources:
-        limits: { cpus: '1.0', memory: 1G }
+        limits: { cpus: '1.0', memory: 1G, pids: 512 }
     depends_on:
       postgres:
         condition: service_healthy
@@ -231,7 +247,7 @@ services:
     deploy:
       resources:
         # Each validation runs in a child process with its own 2 GiB address-space limit.
-        limits: { cpus: '1.0', memory: 1536M }
+        limits: { cpus: '1.0', memory: 1536M, pids: 512 }
     depends_on:
       seaweedfs:
         condition: service_healthy
@@ -242,10 +258,11 @@ services:
   # containers and images APIs (no exec, volumes, swarm, secrets...). ADR-0005: accepted
   # local-dev risk, documented in docs/06; bound to 127.0.0.1.
   docker-proxy:
-    image: tecnativa/docker-socket-proxy:v0.5.0
+    image: tecnativa/docker-socket-proxy:v0.5.0@sha256:1f5038b54f06c3e18422902cf00ba21803d1c97805aae032e5e6673d532d3459
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    cap_drop: [ALL]
     environment:
       CONTAINERS: 1
       POST: 1
@@ -268,7 +285,7 @@ services:
       retries: 20
     deploy:
       resources:
-        limits: { cpus: '0.25', memory: 64M }
+        limits: { cpus: '0.25', memory: 64M, pids: 128 }
     networks: [backend]
 
   # ------------------------------------------------------ Inference gateway (M5)
@@ -284,6 +301,8 @@ services:
       REDIS_URL: redis://:${MO_REDIS_PASSWORD}@redis:6379/0
       MO_API_KEY_PEPPER: ${MO_API_KEY_PEPPER:?run pnpm env:init}
       MO_GATEWAY_INTERNAL_TOKEN: ${MO_GATEWAY_INTERNAL_TOKEN:?run pnpm env:init}
+      # M10: spans go to the collector of the `obs` profile; harmless when it is not running.
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
     ports:
       - '127.0.0.1:${MO_PORT_GATEWAY:-18088}:8080' # public inference API
       - '127.0.0.1:${MO_PORT_GATEWAY_ADMIN:-18089}:8081' # internal: worker probes, /metrics
@@ -300,7 +319,7 @@ services:
       retries: 20
     deploy:
       resources:
-        limits: { cpus: '1.0', memory: 256M }
+        limits: { cpus: '1.0', memory: 256M, pids: 512 }
     depends_on:
       redis:
         condition: service_healthy
@@ -310,14 +329,16 @@ services:
   # Time series for the endpoint dashboards. Short retention: this is a laptop, not a SaaS.
   prometheus:
     <<: *hardening
-    image: prom/prometheus:v3.15.1
+    image: prom/prometheus:v3.15.1@sha256:fa3302279710be2f21a8301ec17a8b4f2301fd829bd113839b3b6b02b6f191a2
     read_only: true
+    cap_drop: [ALL]
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
       - --storage.tsdb.retention.time=2d
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/rules.yml:/etc/prometheus/rules.yml:ro
       - promdata:/prometheus
     ports:
       - '127.0.0.1:${MO_PORT_PROMETHEUS:-19090}:9090'
@@ -328,7 +349,84 @@ services:
       retries: 20
     deploy:
       resources:
-        limits: { cpus: '0.5', memory: 256M }
+        limits: { cpus: '0.5', memory: 256M, pids: 512 }
+    networks: [backend]
+
+  # ------------------------------------------- Observability profile (M10, `pnpm dev:obs`)
+  # Traces: gateway / API / worker / model servers -> OTel Collector -> Tempo; Grafana shows
+  # Prometheus (traffic), Tempo (traces) and a read-only view of the platform database.
+  otel-collector:
+    <<: *hardening
+    image: otel/opentelemetry-collector:0.164.0@sha256:28b6d41ac51bff6b41ba5e8fe503569ffb9d6a1ea90f7a78419e86f34e44f750
+    profiles: [obs]
+    user: '10001:10001'
+    read_only: true
+    cap_drop: [ALL]
+    command: ['--config=/etc/otelcol/config.yaml']
+    volumes:
+      - ./otel/collector.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - '127.0.0.1:${MO_PORT_OTLP_HTTP:-14318}:4318' # the API and worker run on the host in dev
+    deploy:
+      resources:
+        limits: { cpus: '0.5', memory: 256M, pids: 512 }
+    # model servers (internal network) export their spans here too
+    networks: [backend, inference]
+
+  tempo:
+    <<: *hardening
+    image: grafana/tempo:3.1.1@sha256:64e2fbd56d9c2b3412a4b430a58ea59e91a670b1e75f920a0c702213ad145044
+    profiles: [obs]
+    user: '10001:10001'
+    read_only: true
+    cap_drop: [ALL]
+    command: ['-config.file=/etc/tempo.yaml']
+    volumes:
+      - ./tempo/tempo.yaml:/etc/tempo.yaml:ro
+      - tempodata:/var/tempo
+    ports:
+      - '127.0.0.1:${MO_PORT_TEMPO:-13200}:3200' # trace queries (tests, debugging)
+    deploy:
+      resources:
+        # 390 MiB measured after a few hours of test traces (M10): 512M left too little headroom.
+        limits: { cpus: '0.5', memory: 1G, pids: 512 }
+    networks: [backend]
+
+  grafana:
+    <<: *hardening
+    image: grafana/grafana:13.3.0@sha256:488984b716c0862639f91a698adbe2862677a5a07bad42da5f03f3030883b205
+    profiles: [obs]
+    read_only: true
+    cap_drop: [ALL]
+    tmpfs: [/tmp]
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${MO_GRAFANA_ADMIN_PASSWORD:?run pnpm env:init}
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+      GF_AUTH_ANONYMOUS_ENABLED: 'false'
+      GF_ANALYTICS_REPORTING_ENABLED: 'false'
+      GF_ANALYTICS_CHECK_FOR_UPDATES: 'false'
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: 'false'
+      GF_NEWS_NEWS_FEED_ENABLED: 'false'
+      GF_PLUGINS_PREINSTALL_DISABLED: 'true' # no downloads at start-up
+      MO_DB_GRAFANA_USER: ${MO_DB_GRAFANA_USER:?}
+      MO_DB_GRAFANA_PASSWORD: ${MO_DB_GRAFANA_PASSWORD:?}
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafanadata:/var/lib/grafana
+    ports:
+      - '127.0.0.1:${MO_PORT_GRAFANA:-13001}:3000'
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:3000/api/health']
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    deploy:
+      resources:
+        # 299 MiB measured with four dashboards open (M10), 507 MiB after a day of use (M12
+        # benchmark footprint.json): 1G leaves room for its query caches.
+        limits: { cpus: '0.5', memory: 1G, pids: 512 }
     networks: [backend]
 
   # Build-only: the image the worker starts once per revision (`pnpm dev:up` builds it).
@@ -348,6 +446,8 @@ networks:
 
 volumes:
   pgdata:
+  grafanadata:
+  tempodata:
   promdata:
   redisdata:
   s3data:

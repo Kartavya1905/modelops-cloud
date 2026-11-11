@@ -1,0 +1,36 @@
+{
+ "window": {
+  "end": "2026-11-11T17:26:38.862Z",
+  "seconds": 245
+ },
+ "promql": "sum by (code) (increase(gateway_requests_total{stack=\"dev\", source=\"api\", endpoint=\"bench-2026-11-11t1715\"}[245s]))",
+ "result": [
+  {
+   "metric": {
+    "code": "200"
+   },
+   "value": [
+    1794417999,
+    "10091.136012268149"
+   ]
+  },
+  {
+   "metric": {
+    "code": "504"
+   },
+   "value": [
+    1794417999,
+    "7037.978261745899"
+   ]
+  },
+  {
+   "metric": {
+    "code": "503"
+   },
+   "value": [
+    1794417999,
+    "29111.930976839878"
+   ]
+  }
+ ]
+}

@@ -1,0 +1,4 @@
+# False positives only, each reviewed by hand (M9). Fingerprint: commit:file:rule:line.
+# validation-card.tsx lines 41-42: table column definitions whose `key` names a latency metric, not a secret.
+8a71e8fd4e6b295444b08796fff14acc27dda265:apps/web/src/features/ml/validation-card.tsx:generic-api-key:41
+8a71e8fd4e6b295444b08796fff14acc27dda265:apps/web/src/features/ml/validation-card.tsx:generic-api-key:42

@@ -102,6 +102,11 @@ async function main(): Promise<void> {
     await page.getByRole('link', { name: 'Audit log' }).click();
     await page.getByRole('cell', { name: 'project.created' }).first().waitFor();
     await shot(page, `m2-audit${suffix}`);
+    // M9: the hash chain verifies.
+    await page.getByRole('button', { name: 'Verify integrity' }).click();
+    await page.getByTestId('audit-integrity').getByText('Intact').waitFor();
+    await noToasts(page);
+    await shot(page, `m9-audit-integrity${suffix}`);
 
     // ---- M3: real training into the project's experiment, compare, register ------------
     await page.getByRole('link', { name: 'Projects' }).click();

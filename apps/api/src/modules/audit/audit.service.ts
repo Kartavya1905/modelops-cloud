@@ -105,4 +105,29 @@ export class AuditService {
         rows.length > query.limit && last ? encodeCursor({ id: last.id.toString() }) : null,
     };
   }
+
+  /**
+   * M9: recomputes the organization's audit hash chain in the database (`audit_chain_verify`),
+   * so the hashing rule exists in exactly one place.
+   */
+  async verify(orgId: string): Promise<AuditVerification> {
+    const [row] = await this.prisma.$queryRaw<
+      { checked: bigint; broken_at: bigint | null; reason: string | null; head: string | null }[]
+    >`SELECT checked, broken_at, reason, head FROM audit_chain_verify(${orgId}::uuid)`;
+    return {
+      intact: row?.broken_at == null,
+      checked: Number(row?.checked ?? 0),
+      brokenAt: row?.broken_at == null ? null : Number(row.broken_at),
+      reason: row?.reason ?? null,
+      head: row?.head ?? null,
+    };
+  }
+}
+
+export interface AuditVerification {
+  intact: boolean;
+  checked: number;
+  brokenAt: number | null;
+  reason: string | null;
+  head: string | null;
 }

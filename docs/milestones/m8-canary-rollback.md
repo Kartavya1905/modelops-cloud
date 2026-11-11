@@ -1,6 +1,6 @@
 # Milestone 8 — Canary Deployment and Rollback
 
-> **Status: implemented and verified locally (2026-11-10, Windows 11).** CI on Linux: pending the next push.
+> **Status: done (2026-11-10).** Verified locally on Windows 11 and in CI on Linux: [run 42899758376](https://github.com/Kartavya1905/modelops-cloud/actions/runs/42899758376). All five jobs passed on the first run; the stack job (integration incl. the 10 000-request split and the broken-canary abort, smoke, e2e) took 7.1 minutes.
 
 ![A broken canary aborted automatically by its analysis](../images/m8-aborted.png)
 
@@ -172,7 +172,7 @@ In the screenshot run (dev stack, k6 at 30 req/s, canary at 30 %), the **worker'
 | Rollback timing | ✅ 85–87 ms (fast path) |
 | Self-approval blocked | ✅ API 403 + database CHECK |
 | **A bad canary is rolled back automatically with no client-visible errors beyond the canary share** | ✅ stable-bound clients: 0 errors; errors ≤ the canary-bound requests, most absorbed by the fallback |
-| CI green on Linux | ⏳ after the next push |
+| CI green on Linux | ✅ [run 42899758376](https://github.com/Kartavya1905/modelops-cloud/actions/runs/42899758376) |
 
 ## L. Completion checklist
 
@@ -183,4 +183,4 @@ In the screenshot run (dev stack, k6 at 30 req/s, canary at 30 %), the **worker'
 - [x] Web: release card, deploy rollout choice, approvals page, production endpoints
 - [x] Broken-canary fixture; model server non-finite check
 - [x] Unit, component, integration, e2e + axe
-- [ ] Green CI run on Linux
+- [x] Green CI run on Linux

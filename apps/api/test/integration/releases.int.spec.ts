@@ -476,7 +476,7 @@ describe('production: four eyes (FR-41)', () => {
     expect((await deployRequest(prod.id, { modelVersionId: v.sklearn }, eli)).status).toBe(403);
   });
 
-  it('a production deploy waits for a second Owner/Admin; nobody approves their own', async () => {
+  it('SEC-8, SEC-9: a production deploy waits for a second Owner/Admin; nobody approves their own', async () => {
     const res = await deployRequest(prod.id, { modelVersionId: v.sklearn });
     expect(res.status).toBe(202);
     const revId = (res.body as { id: string; state: string }).id;

@@ -1,0 +1,13 @@
+# Build context is the repo root; send only what the API image needs.
+**
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!tsconfig.base.json
+!apps/api/package.json
+!apps/api/tsconfig.json
+!apps/api/tsconfig.build.json
+!apps/api/prisma.config.ts
+!apps/api/prisma/**
+!apps/api/src/**
+apps/api/src/generated

@@ -59,8 +59,18 @@ async function bootWith(checks: DependencyCheck[]): Promise<INestApplication> {
       gatewayToken: 't'.repeat(32),
       relayMs: 500,
       reconcileMs: 1000,
+      unhealthyStreak: 3,
       drainGraceMs: 0,
       canaryAnalysisMs: 15_000,
+      lockMs: 30_000,
+      modelServerOtlpEndpoint: '',
+      runtime: {
+        driver: 'docker',
+        namespace: 'modelops-models',
+        context: '',
+        egress: [],
+        modelServerDomain: '',
+      },
       instanceId: 'unit',
     },
   };

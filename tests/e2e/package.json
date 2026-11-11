@@ -9,7 +9,9 @@
     "e2e": "playwright test",
     "install-browsers": "playwright install chromium",
     "typecheck": "tsc --noEmit",
-    "screenshots": "node --experimental-strip-types screenshots.ts"
+    "screenshots": "node --experimental-strip-types screenshots.ts",
+    "screenshots:grafana": "node --experimental-strip-types grafana-shots.ts",
+    "demo:record": "node --experimental-strip-types demo-recording.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.14.0",

@@ -1,0 +1,95 @@
+{
+ "run": "2026-11-11T1023",
+ "headline": {
+  "steady_requests": {
+   "value": 9000,
+   "unit": "requests",
+   "source": "benchmarks/results/2026-11-11T1023/steady.json",
+   "field": "metrics.http_reqs.values.count"
+  },
+  "steady_failed": {
+   "value": 0,
+   "unit": "requests",
+   "source": "benchmarks/results/2026-11-11T1023/steady.json",
+   "field": "metrics.http_req_failed.values.passes"
+  },
+  "steady_p50_ms": {
+   "value": 3.3,
+   "unit": "ms",
+   "source": "benchmarks/results/2026-11-11T1023/steady.json",
+   "field": "metrics.http_req_duration.values.med"
+  },
+  "steady_p95_ms": {
+   "value": 4.7,
+   "unit": "ms",
+   "source": "benchmarks/results/2026-11-11T1023/steady.json",
+   "field": "metrics.http_req_duration.values[\"p(95)\"]"
+  },
+  "steady_p99_ms": {
+   "value": 5.6,
+   "unit": "ms",
+   "source": "benchmarks/results/2026-11-11T1023/steady.json",
+   "field": "metrics.http_req_duration.values[\"p(99)\"]"
+  },
+  "gateway_overhead_p50_ms": {
+   "value": 1.45,
+   "unit": "ms",
+   "source": "benchmarks/results/2026-11-11T1023/direct.json",
+   "field": "steady p50 - direct p50"
+  },
+  "gateway_overhead_p95_ms": {
+   "value": 1.86,
+   "unit": "ms",
+   "source": "benchmarks/results/2026-11-11T1023/direct.json",
+   "field": "steady p95 - direct p95"
+  },
+  "ramp_sustained_rps": {
+   "value": 100,
+   "unit": "req/s",
+   "source": "benchmarks/results/2026-11-11T1023/ramp.json",
+   "field": "metrics[\"http_reqs{scenario:rps_100}\"]"
+  },
+  "ramp_sustained_p95_ms": {
+   "value": 8.1,
+   "unit": "ms",
+   "source": "benchmarks/results/2026-11-11T1023/ramp.json",
+   "field": "metrics[\"http_req_duration{scenario:rps_100}\"].values[\"p(95)\"]"
+  },
+  "ramp_overload_restarts": {
+   "value": 2,
+   "unit": "restarts",
+   "source": "benchmarks/results/2026-11-11T1023/events.json",
+   "field": "sum of revisions[].restartCount"
+  },
+  "canary_share_percent": {
+   "value": 9.88,
+   "unit": "%",
+   "source": "benchmarks/results/2026-11-11T1023/canary.json",
+   "field": "responses_by_revision{revision:<canary>} / all"
+  },
+  "canary_responses": {
+   "value": 6001,
+   "unit": "responses",
+   "source": "benchmarks/results/2026-11-11T1023/canary.json",
+   "field": "responses_by_revision"
+  },
+  "rollback_median_ms": {
+   "value": 54,
+   "unit": "ms",
+   "source": "benchmarks/results/2026-11-11T1023/rollback.json",
+   "field": "median of trials[].servedMs"
+  },
+  "rollback_max_ms": {
+   "value": 68.8,
+   "unit": "ms",
+   "source": "benchmarks/results/2026-11-11T1023/rollback.json",
+   "field": "max of trials[].servedMs"
+  },
+  "footprint_gib": {
+   "value": 2.15,
+   "unit": "GiB",
+   "source": "benchmarks/results/2026-11-11T1023/footprint.json",
+   "field": "totalMiB / 1024"
+  }
+ }
+}

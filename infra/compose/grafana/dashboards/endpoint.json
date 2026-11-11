@@ -1,0 +1,226 @@
+{
+  "uid": "modelops-endpoint",
+  "title": "ModelOps · Endpoint",
+  "description": "One endpoint: traffic by model version, latency, errors, canary fallbacks and its traces (M10).",
+  "tags": ["modelops"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "editable": false,
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Requests per second, by model version",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (model_version) (rate(gateway_requests_total{stack=\"$stack\", source=\"api\", endpoint=\"$endpoint\"}[1m]))",
+          "legendFormat": "v{{model_version}}"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Latency p50 / p95 / p99 (gateway)",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.5, sum by (le) (rate(gateway_request_duration_seconds_bucket{stack=\"$stack\", source=\"api\", endpoint=\"$endpoint\"}[1m])))",
+          "legendFormat": "p50"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(gateway_request_duration_seconds_bucket{stack=\"$stack\", source=\"api\", endpoint=\"$endpoint\"}[1m])))",
+          "legendFormat": "p95"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(gateway_request_duration_seconds_bucket{stack=\"$stack\", source=\"api\", endpoint=\"$endpoint\"}[1m])))",
+          "legendFormat": "p99"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Server error rate",
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(sum(rate(gateway_requests_total{stack=\"$stack\", source=\"api\", endpoint=\"$endpoint\", code=~\"5..\"}[1m])) or vector(0)) / sum(rate(gateway_requests_total{stack=\"$stack\", source=\"api\", endpoint=\"$endpoint\"}[1m]))",
+          "legendFormat": "5xx share"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Canary fallbacks to stable (per minute)",
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (revision) (increase(gateway_canary_fallback_total{stack=\"$stack\"}[1m]) and on (endpoint_id) gateway_requests_total{stack=\"$stack\", endpoint=\"$endpoint\"})",
+          "legendFormat": "{{revision}}"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Requests bucketed to a canary whose circuit was open, served by stable instead (M8)."
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "Recent traces through the gateway",
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 24,
+        "h": 10
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tempo",
+            "uid": "tempo"
+          },
+          "queryType": "traceql",
+          "limit": 20,
+          "query": "{resource.service.name=\"modelops-gateway\" && span.modelops.endpoint=\"$endpoint\"}"
+        }
+      ],
+      "datasource": {
+        "type": "tempo",
+        "uid": "tempo"
+      },
+      "description": "Each row is one prediction: gateway -> model server. Open it to see where the time went."
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "stack",
+        "label": "Stack",
+        "type": "custom",
+        "query": "dev,kind",
+        "current": {
+          "text": "dev",
+          "value": "dev"
+        },
+        "options": [
+          {
+            "text": "dev",
+            "value": "dev",
+            "selected": true
+          },
+          {
+            "text": "kind",
+            "value": "kind",
+            "selected": false
+          }
+        ],
+        "hide": 0,
+        "includeAll": false,
+        "multi": false,
+        "description": "dev = Docker Compose gateway; kind = the platform on Kubernetes (M10)"
+      },
+      {
+        "name": "endpoint",
+        "label": "Endpoint",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": {
+          "query": "label_values(gateway_requests_total{stack=\"$stack\"}, endpoint)",
+          "refId": "endpoint"
+        },
+        "refresh": 2,
+        "sort": 1
+      }
+    ]
+  }
+}

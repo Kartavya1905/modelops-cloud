@@ -1,0 +1,15 @@
+# M10: the kind overlay. `pnpm kind:up` writes the two env files next to this one from the
+# repository's .env (with in-cluster addresses) and applies `kubectl apply -k` here.
+# Both files are gitignored: secrets.env holds passwords, config.env the host's subnet.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+configMapGenerator:
+  - name: modelops-config
+    namespace: modelops
+    envs: [config.env]
+secretGenerator:
+  - name: modelops-secrets
+    namespace: modelops
+    envs: [secrets.env]

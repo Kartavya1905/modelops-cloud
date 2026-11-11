@@ -1,33 +1,115 @@
-# CI: code quality + contract drift on every push/PR, then the full local stack with
-# integration tests, smoke test and browser end-to-end tests.
-# Free on public repositories (GitHub-hosted ubuntu-latest runners include Docker).
-# Action versions are pinned by major tag for now; M11 pins them by commit SHA.
+# CI/CD for ModelOps Cloud (M11). Free on public repositories: GitHub-hosted runners, the GitHub
+# Actions cache and GHCR (public packages) cost nothing; nothing here talks to AWS (ADR-0008).
+#
+#   changes        which parts of the repo a pull request touches (path filters)
+#   quality        format, lint, typecheck, unit tests, build, OpenAPI contract     (always)
+#   security       gitleaks (full history), pnpm audit, pip-audit                  (always)
+#   ml, ml-worker, model-server   Python lint + tests (+ the image tests)           (if touched)
+#   migrations     every migration on an empty Postgres SERVICE CONTAINER; schema drift
+#   terraform      fmt, validate, tflint, checkov (pnpm tf:check), no credentials
+#   stack          the full Docker stack: integration, smoke, chaos, e2e, Trivy, hardening
+#   kind           the control plane on Kubernetes: lifecycle tests, acceptance smoke
+#   ci-ok          the one required check: green only if nothing above failed
+#   publish        main only: build, scan and push images to GHCR (with SBOM + provenance)
+#
+# Supply chain: every action is pinned by commit SHA (the version is in the comment), every
+# container image by digest, every job has the least permissions it needs, and Dependabot
+# (.github/dependabot.yml) proposes updates after a 7-day cooldown (ADR-0007).
 name: ci
 
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+# A newer push to a pull request cancels the older run; runs on main always finish (they publish).
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  TRIVY_IMAGE: aquasec/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c
 
 jobs:
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read # paths-filter lists the files of the pull request
+    outputs:
+      # Pushes to main and manual runs test everything; pull requests only what they touch.
+      all: ${{ github.event_name != 'pull_request' || steps.filter.outputs.workflows == 'true' }}
+      ml: ${{ steps.filter.outputs.ml }}
+      ml_worker: ${{ steps.filter.outputs.ml_worker }}
+      model_server: ${{ steps.filter.outputs.model_server }}
+      migrations: ${{ steps.filter.outputs.migrations }}
+      terraform: ${{ steps.filter.outputs.terraform }}
+      stack: ${{ steps.filter.outputs.stack }}
+      kind: ${{ steps.filter.outputs.kind }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        with:
+          filters: |
+            workflows:
+              - '.github/**'
+            ml:
+              - 'ml/**'
+            ml_worker:
+              - 'services/ml-worker/**'
+            model_server:
+              - 'services/model-server/**'
+            migrations:
+              - 'apps/api/prisma/**'
+              - 'scripts/check-migrations.mjs'
+            terraform:
+              - 'infra/terraform/**'
+              - 'scripts/terraform-check.mjs'
+            stack:
+              - 'apps/**'
+              - 'packages/**'
+              - 'services/**'
+              - 'ml/**'
+              - 'tests/**'
+              - 'infra/compose/**'
+              - 'scripts/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+            kind:
+              - 'apps/api/**'
+              - 'apps/gateway/**'
+              - 'apps/web/**'
+              - 'services/model-server/**'
+              - 'infra/k8s/**'
+              - 'infra/kind/**'
+              - 'infra/compose/**'
+              - 'scripts/kind*.mjs'
+              - 'pnpm-lock.yaml'
+
   quality:
     name: lint · typecheck · unit tests · contract
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6 # version comes from "packageManager" in package.json
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1 (version from "packageManager")
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
           cache: pnpm
+      # M11: the workflows themselves (expressions, needs/outputs, shellcheck on every run script).
+      - name: Lint GitHub Actions workflows (actionlint)
+        run: |
+          docker run --rm -v "$PWD:/repo" -w /repo \
+            rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 -no-color
       - run: pnpm install --frozen-lockfile # also runs `prisma generate` (api postinstall)
       - run: pnpm format:check
       - run: pnpm lint
@@ -44,16 +126,49 @@ jobs:
             exit 1
           }
 
+  # M9: supply chain and secrets. Free tools only; versions >= 7 days old (ADR-0007).
+  security:
+    name: security (gitleaks · pnpm audit · pip-audit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the whole history: a secret removed later is still leaked
+      - name: Secrets in the git history (gitleaks)
+        run: |
+          docker run --rm -v "$PWD:/repo" \
+            zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f \
+            git /repo --redact --exit-code 1 --no-banner --gitleaks-ignore-path /repo/.gitleaksignore
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - name: npm dependencies (pnpm audit, production, high and critical)
+        run: pnpm audit --prod --audit-level high
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - name: Python dependencies (pip-audit)
+        run: |
+          for dir in ml services/ml-worker services/model-server; do
+            echo "::group::$dir"
+            (cd "$dir" && uv export --frozen --no-hashes --no-dev --no-emit-project -q > /tmp/req.txt \
+              && uvx --from pip-audit==2.10.1 pip-audit --no-deps --disable-pip --progress-spinner off -r /tmp/req.txt)
+            echo "::endgroup::"
+          done
+
   ml:
     name: ML training code (ruff · pytest)
+    needs: changes
+    if: needs.changes.outputs.all == 'true' || needs.changes.outputs.ml == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
       run:
         working-directory: ml
     steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2 (no floating major tag exists)
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           enable-cache: true
           cache-dependency-glob: ml/uv.lock
@@ -65,14 +180,16 @@ jobs:
 
   ml-worker:
     name: Validator service (ruff · pytest · image)
+    needs: changes
+    if: needs.changes.outputs.all == 'true' || needs.changes.outputs.ml_worker == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
       run:
         working-directory: services/ml-worker
     steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2 (no floating major tag exists)
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           enable-cache: true
           cache-dependency-glob: services/ml-worker/uv.lock
@@ -89,14 +206,16 @@ jobs:
 
   model-server:
     name: Model server (ruff · pytest · image)
+    needs: changes
+    if: needs.changes.outputs.all == 'true' || needs.changes.outputs.model_server == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
       run:
         working-directory: services/model-server
     steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2 (no floating major tag exists)
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           enable-cache: true
           cache-dependency-glob: services/model-server/uv.lock
@@ -109,15 +228,66 @@ jobs:
           docker build --target test -t modelops/model-server:test .
           docker run --rm --read-only --tmpfs /tmp modelops/model-server:test
 
-  stack:
-    name: integration · smoke · e2e
-    needs: [quality, ml, ml-worker, model-server]
+  # M11: a GitHub service container. Every migration applies to an empty PostgreSQL 18, and the
+  # result must equal schema.prisma (apart from the reviewed raw-SQL objects in known-drift.sql).
+  migrations:
+    name: migrations (service container · schema drift)
+    needs: changes
+    if: needs.changes.outputs.all == 'true' || needs.changes.outputs.migrations == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:18.6@sha256:e3d24f6906d0760bf4da0dae872415391ededefad23fd471c47dc53b0ddf3c42
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci # a throwaway container that only this job can reach
+          POSTGRES_DB: modelops
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U ci -d modelops"
+          --health-interval 2s --health-timeout 2s --health-retries 30
     steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --filter @modelops/api
+      - name: Migrations build exactly schema.prisma
+        env:
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/modelops
+        run: node scripts/check-migrations.mjs
+
+  # M11: the AWS design as code, checked without an AWS account (ADR-0008: never applied).
+  terraform:
+    name: terraform (fmt · validate · tflint · checkov)
+    needs: changes
+    if: needs.changes.outputs.all == 'true' || needs.changes.outputs.terraform == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: pnpm tf:check (pinned containers, no credentials)
+        env:
+          GITHUB_TOKEN: ${{ github.token }} # only to download the tflint AWS ruleset without rate limits
+        run: node scripts/terraform-check.mjs
+
+  stack:
+    name: integration · smoke · chaos · e2e
+    needs: [changes, quality, ml, ml-worker, model-server]
+    # Runs when the code it exercises changed; skipped upstream jobs (path filters) are fine,
+    # failed ones are not.
+    if: >-
+      !cancelled() && !failure() &&
+      (needs.changes.outputs.all == 'true' || needs.changes.outputs.stack == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
           cache: pnpm
@@ -133,9 +303,20 @@ jobs:
       - name: Apply database migrations
         run: pnpm db:deploy
 
+      # M10: trace collector, Tempo, Grafana (+ its read-only role, granted after migrations).
+      # The tracing integration test reads traces back from Tempo.
+      - name: Start the observability profile
+        run: pnpm dev:obs
+
+      - name: Alert rules unit tests (promtool)
+        run: |
+          docker run --rm -v "$PWD/infra/compose/prometheus:/rules:ro" --entrypoint promtool \
+            prom/prometheus:v3.15.1@sha256:fa3302279710be2f21a8301ec17a8b4f2301fd829bd113839b3b6b02b6f191a2 \
+            test rules /rules/rules.test.yml
+
       # The seeded churn generator (ml/modelops_ml/datasets.py) makes the M7 drift and evaluation
       # data for the integration tests; the M3 e2e test trains real models with it.
-      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2 (no floating major tag exists)
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           enable-cache: true
           cache-dependency-glob: ml/uv.lock
@@ -155,7 +336,7 @@ jobs:
           nohup pnpm --filter @modelops/api start:worker > worker.log 2>&1 &
           nohup pnpm --filter @modelops/web start > web.log 2>&1 &
           for url in http://127.0.0.1:4000/api/v1/health/live http://127.0.0.1:3300/login; do
-            for i in $(seq 1 60); do
+            for _ in $(seq 1 60); do
               curl -fsS "$url" > /dev/null && break
               sleep 1
             done
@@ -164,17 +345,67 @@ jobs:
       - name: Smoke test
         run: pnpm test:smoke
 
+      # The vulnerability database is ~80 MB: cache it between runs (refreshed daily).
+      - name: Cache the Trivy database
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ~/.cache/trivy
+          key: trivy-db-${{ github.run_id }}
+          restore-keys: trivy-db-
+
+      # M9: our images must have no CRITICAL vulnerability that has a fix (docs/06 §6). HIGH ones
+      # are listed for review but do not fail the build.
+      - name: Image vulnerabilities (Trivy)
+        run: |
+          for img in modelops/gateway:dev modelops/ml-worker:dev modelops/model-server:dev modelops/mlflow:3.17.2; do
+            echo "::group::$img"
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$HOME/.cache/trivy:/root/.cache/trivy" \
+              "$TRIVY_IMAGE" image --quiet --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 0 "$img"
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$HOME/.cache/trivy:/root/.cache/trivy" \
+              "$TRIVY_IMAGE" image --quiet --scanners vuln --severity CRITICAL --ignore-unfixed --exit-code 1 "$img"
+            echo "::endgroup::"
+          done
+
+      # M9: real faults (killed worker process, flushed and restarted Redis, paused Postgres, killed
+      # model server) on the throwaway test database; the stack above must survive them too.
+      - name: Chaos tests
+        run: pnpm --filter @modelops/api test:chaos
+
+      - name: Upload chaos report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: chaos-report
+          path: apps/api/test-results/chaos-report.json
+          retention-days: 30
+          if-no-files-found: ignore
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+
       - name: Browser end-to-end tests (Playwright + axe)
         run: |
           pnpm --filter @modelops/e2e exec playwright install --with-deps chromium
           pnpm test:e2e
 
-      - name: Upload Playwright report
+      # M9: what Docker actually applied (users, read-only root, capabilities, limits, networks),
+      # checked on the running stack and the model servers the e2e tests left behind.
+      - name: Container hardening check
+        run: pnpm check:hardening
+
+      # M11: the HTML report AND the traces (test-results/**/trace.zip: every step, network call
+      # and DOM snapshot of a failed test; open with `npx playwright show-trace`).
+      - name: Upload Playwright report and traces
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: playwright-report
-          path: tests/e2e/playwright-report
+          name: playwright-report-and-traces
+          path: |
+            tests/e2e/playwright-report
+            tests/e2e/test-results
           retention-days: 7
 
       - name: Diagnostics on failure
@@ -189,3 +420,187 @@ jobs:
       - name: Tear down
         if: always()
         run: pnpm dev:clean
+
+  # M10: the control plane on Kubernetes (kind), next to the same compose infrastructure.
+  kind:
+    name: kubernetes (kind) · lifecycle · acceptance
+    needs: [changes, quality, model-server]
+    if: >-
+      !cancelled() && !failure() &&
+      (needs.changes.outputs.all == 'true' || needs.changes.outputs.kind == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # Pinned and checksummed (ADR-0007): the runner image's own kind may be another version.
+      - name: Install kind v0.33.0
+        run: |
+          curl -fsSLo "$RUNNER_TEMP/kind" https://github.com/kubernetes-sigs/kind/releases/download/v0.33.0/kind-linux-amd64
+          echo "aee6151561422756b764a4ae28e7f44cda5af5a9eead3cc9985112b1de8d8e0d  $RUNNER_TEMP/kind" | sha256sum -c -
+          sudo install -m 0755 "$RUNNER_TEMP/kind" /usr/local/bin/kind
+          kind version
+          kubectl version --client
+
+      - name: Compose infrastructure + observability
+        run: |
+          pnpm env:init
+          pnpm dev:up
+          pnpm db:deploy
+          pnpm dev:obs
+
+      # Cluster from infra/kind/cluster.yaml, images built and loaded, database modelops_kind,
+      # kubectl apply -k infra/k8s/overlays/kind, rollout.
+      - name: pnpm kind:up
+        run: pnpm kind:up
+
+      # The same lifecycle suite as on Docker, plus NetworkPolicy probes, against the
+      # KubernetesDriver (model servers as pods, test gateway as a pod).
+      - name: Lifecycle tests on Kubernetes
+        run: pnpm --filter @modelops/api test:k8s
+
+      # Acceptance: upload -> validate -> deploy as a pod with limits -> predict through the kind
+      # gateway -> Prometheus, Tempo and Grafana show it.
+      - name: Acceptance (pnpm kind:smoke)
+        run: pnpm kind:smoke
+
+      - name: Cache the Trivy database
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ~/.cache/trivy
+          key: trivy-db-${{ github.run_id }}
+          restore-keys: trivy-db-
+
+      - name: Image vulnerabilities (Trivy) for the API and web images
+        run: |
+          for img in modelops/api:dev modelops/web:dev; do
+            echo "::group::$img"
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$HOME/.cache/trivy:/root/.cache/trivy" \
+              "$TRIVY_IMAGE" image --quiet --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 0 "$img"
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$HOME/.cache/trivy:/root/.cache/trivy" \
+              "$TRIVY_IMAGE" image --quiet --scanners vuln --severity CRITICAL --ignore-unfixed --exit-code 1 "$img"
+            echo "::endgroup::"
+          done
+
+      - name: Diagnostics on failure
+        if: failure()
+        run: |
+          kubectl --context kind-modelops get pods -A -o wide || true
+          kubectl --context kind-modelops -n modelops-models get pods,svc,networkpolicy || true
+          for d in api worker web gateway; do kubectl --context kind-modelops -n modelops logs deploy/$d --tail 80 || true; done
+          kubectl --context kind-modelops get events -A --sort-by=.lastTimestamp | tail -40 || true
+
+      - name: Tear down
+        if: always()
+        run: |
+          pnpm kind:down || true
+          pnpm dev:clean
+
+  # The single check to require in branch protection: path-filtered jobs may be skipped, but none
+  # may fail or be cancelled.
+  ci-ok:
+    name: ci-ok
+    if: always()
+    needs:
+      [changes, quality, security, ml, ml-worker, model-server, migrations, terraform, stack, kind]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every job passed or was skipped by its path filter
+        env:
+          RESULTS: ${{ toJSON(needs.*.result) }}
+        run: |
+          echo "job results: $RESULTS"
+          if echo "$RESULTS" | grep -Eq '"(failure|cancelled)"'; then
+            echo "::error::at least one job failed or was cancelled"
+            exit 1
+          fi
+
+  # Main only, after everything passed: build each image once more (cached), scan it, then push it
+  # to GHCR with an SBOM and build provenance. GHCR is free for public packages; new packages start
+  # private until the owner changes their visibility. Tags: the commit SHA and `main`.
+  publish:
+    name: publish ${{ matrix.image }} (GHCR)
+    needs: ci-ok
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write # push to ghcr.io/<owner>/modelops-*
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { image: api, context: ., file: apps/api/Dockerfile, target: '' }
+          - { image: web, context: ., file: apps/web/Dockerfile, target: '' }
+          - { image: gateway, context: ., file: apps/gateway/Dockerfile, target: '' }
+          - {
+              image: model-server,
+              context: services/model-server,
+              file: services/model-server/Dockerfile,
+              target: runtime,
+            }
+          - {
+              image: ml-worker,
+              context: services/ml-worker,
+              file: services/ml-worker/Dockerfile,
+              target: runtime,
+            }
+          - {
+              image: mlflow,
+              context: infra/compose/mlflow,
+              file: infra/compose/mlflow/Dockerfile,
+              target: '',
+            }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Image name (registry names are lower case)
+        id: name
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/modelops-${{ matrix.image }}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        id: meta
+        with:
+          images: ${{ steps.name.outputs.image }}
+          tags: |
+            type=sha,format=long,prefix=
+            type=raw,value=main
+      # 1. Build into the runner's Docker (layers cached in the GitHub Actions cache per image).
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          target: ${{ matrix.target }}
+          load: true
+          tags: ${{ steps.name.outputs.image }}:scan
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,scope=${{ matrix.image }},mode=min
+      # 2. Nothing CRITICAL with a fix goes out.
+      - name: Scan before publishing (Trivy)
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock "$TRIVY_IMAGE" image --quiet \
+            --scanners vuln --severity CRITICAL --ignore-unfixed --exit-code 1 "${{ steps.name.outputs.image }}:scan"
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      # 3. Push the same build (every layer comes from the cache), with SBOM and provenance.
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          target: ${{ matrix.target }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          sbom: true
+          provenance: mode=max

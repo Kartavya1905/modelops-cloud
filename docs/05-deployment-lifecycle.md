@@ -4,6 +4,8 @@
 
 ## 1. End-to-end deployment sequence
 
+The diagram shows the Docker runtime. On Kubernetes (M10) step D is the `KubernetesDriver`: one Pod + Service + NetworkPolicy per revision instead of one container. The states, retries, deadlines, restart budget and reconciler below are the same code, and the same lifecycle test suite passes on both ([ADR-0005 addendum](adr/0005-runtime-driver-abstraction.md#addendum--m10-implementation-2026-11-11)).
+
 ```mermaid
 sequenceDiagram
   autonumber
@@ -92,7 +94,7 @@ stateDiagram-v2
 | PROVISIONING | LOADING | Worker | Container exists and is running | Deadline = now + 120 s |
 | LOADING | VERIFYING | Worker | `/readyz` 200 | Deadline = now + 60 s |
 | VERIFYING | READY | Worker | Every golden example within tolerance | Routing table update; first deploy sets stable |
-| READY | DEGRADED | Reconciler / gateway circuit breaker | 3 consecutive failed health checks | Remove from routing; restart container |
+| READY | DEGRADED | Reconciler | Container exited or missing; **or** a running container failed 3 consecutive health checks (`UNHEALTHY_STREAK`, M12: until then a busy server keeps serving) | Remove from routing; restart container |
 | DEGRADED | FAILED | Reconciler | > 3 restarts in 10 min | If it was canary: weight → 0. If stable with a warm previous: auto-rollback |
 | READY | DRAINING | Releases | Another revision promoted / rolled back to | Removed from routing; grace 30 min (configurable) |
 | DRAINING | READY | Releases (rollback) | Container still healthy | Routing update (fast rollback) |
@@ -146,7 +148,9 @@ actual  = driver.list(label=modelops.managed=true)
 for each desired revision:
   if state past deadline                  → FAILED(TIMEOUT), cleanup
   if QUEUED and no job in queue           → re-enqueue (lost on Redis restart)
-  if READY and container missing/unhealthy → DEGRADED, restart (budget 3 / 10 min)
+  if READY and container missing/exited      → DEGRADED, restart (budget 3 / 10 min)
+  if READY, running, health check fails      → count it; 3 in a row → DEGRADED, restart
+                                               (a passing check resets the count; M12 finding)
   if DRAINING and grace elapsed           → remove container, RETIRED
 for each actual container with no desired revision (orphan) → remove
 rebuild routing snapshot from Postgres; if hash differs from Redis → publish
@@ -191,5 +195,6 @@ flowchart LR
 | **Safety** | A revision receives traffic **only** if Postgres records it as `READY` (or `DRAINING` during a fast rollback) **and** the gateway's health view agrees. An unvalidated artifact cannot reach `READY` because validation is checked by the API, by a DB trigger, and again by the worker. |
 | **Routing consistency** | Eventually consistent. After a traffic change, gateways converge within the pub/sub latency (milliseconds) and are always bounded by the 15 s reconciler. During convergence a request may hit the old split, which is acceptable because both revisions are healthy. |
 | **Liveness** | Every non-terminal state has a deadline, so no revision can stay in progress forever. |
+| **Infrastructure faults** (M9) | A database outage is retried, never recorded as the revision's failure; the deadline still bounds it. Measured under real faults (`pnpm test:chaos`): a killed worker, a flushed or restarted Redis, a paused Postgres and a killed model server all end in the correct state within their deadlines, and the data plane keeps answering through Redis and Postgres outages (M9 reliability report). |
 | **Predictions** | Each request is served at most once by one revision. Predictions are pure functions, but the gateway does **not** retry automatically, so error metrics stay truthful. |
 | **What we do not guarantee** | Zero dropped in-flight requests during a model-server crash, cross-region failover, or ordering of audit events across different organizations. |

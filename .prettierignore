@@ -16,3 +16,9 @@ packages/api-contract/src/schema.d.ts
 **/.ruff_cache
 # Generated ONNX bundles (ml/modelops_ml/fixtures.py): byte-exact, never reformatted
 tests/fixtures/bundles
+
+# Terraform working directories (pnpm tf:check)
+**/.terraform/
+
+# Raw benchmark results (pnpm bench): exactly as written, never reformatted
+benchmarks/results

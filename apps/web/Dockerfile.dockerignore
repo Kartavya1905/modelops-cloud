@@ -1,0 +1,16 @@
+# Build context is the repo root; send only what the web image needs.
+**
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!tsconfig.base.json
+!packages/api-contract/package.json
+!packages/api-contract/tsconfig.json
+!packages/api-contract/openapi.json
+!packages/api-contract/src/**
+!apps/web/package.json
+!apps/web/next.config.ts
+!apps/web/next-env.d.ts
+!apps/web/postcss.config.mjs
+!apps/web/tsconfig.json
+!apps/web/src/**

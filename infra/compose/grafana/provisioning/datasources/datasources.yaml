@@ -1,0 +1,45 @@
+# M10: Grafana data sources (provisioned, read-only in the UI).
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+  - name: Tempo
+    uid: tempo
+    type: tempo
+    access: proxy
+    url: http://tempo:3200
+    editable: false
+  # Read-only role with SELECT on a few operational tables (infra/compose/postgres/init/02-grafana.sh).
+  - name: ModelOps DB
+    uid: modelops-db
+    type: grafana-postgresql-datasource
+    url: postgres:5432
+    user: ${MO_DB_GRAFANA_USER}
+    secureJsonData:
+      password: ${MO_DB_GRAFANA_PASSWORD}
+    jsonData:
+      database: modelops
+      sslmode: disable
+      postgresVersion: 1800
+      timescaledb: false
+    editable: false
+  # M10: the same role on the kind platform's database (`pnpm kind:up` creates modelops_kind).
+  # Dashboards that query Postgres have a "Database" picker for either one.
+  - name: ModelOps DB (kind)
+    uid: modelops-db-kind
+    type: grafana-postgresql-datasource
+    url: postgres:5432
+    user: ${MO_DB_GRAFANA_USER}
+    secureJsonData:
+      password: ${MO_DB_GRAFANA_PASSWORD}
+    jsonData:
+      database: modelops_kind
+      sslmode: disable
+      postgresVersion: 1800
+      timescaledb: false
+    editable: false

@@ -65,6 +65,41 @@
         ]
       }
     },
+    "/api/v1/orgs/{orgId}/audit-events/verify": {
+      "get": {
+        "operationId": "Audit_verify",
+        "parameters": [
+          {
+            "name": "orgId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditVerificationDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "audit"
+        ]
+      }
+    },
     "/api/v1/auth/register": {
       "post": {
         "operationId": "Auth_register",
@@ -3135,6 +3170,40 @@
         "required": [
           "data",
           "nextCursor"
+        ]
+      },
+      "AuditVerificationDto": {
+        "type": "object",
+        "properties": {
+          "intact": {
+            "type": "boolean",
+            "description": "Every event verified against its predecessor"
+          },
+          "checked": {
+            "type": "number",
+            "description": "Events verified (up to the first break)"
+          },
+          "brokenAt": {
+            "type": "number",
+            "nullable": true,
+            "description": "Chain position of the first break"
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true
+          },
+          "head": {
+            "type": "string",
+            "nullable": true,
+            "description": "Hash of the latest event (hex)"
+          }
+        },
+        "required": [
+          "intact",
+          "checked",
+          "brokenAt",
+          "reason",
+          "head"
         ]
       },
       "RegisterDto": {

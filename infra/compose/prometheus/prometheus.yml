@@ -4,6 +4,10 @@ global:
   scrape_interval: 5s
   evaluation_interval: 15s
 
+# M10: alert rules (docs/runbooks/ explains each one).
+rule_files:
+  - /etc/prometheus/rules.yml
+
 scrape_configs:
   - job_name: gateway
     metrics_path: /metrics
@@ -14,3 +18,27 @@ scrape_configs:
       # The gateway the integration tests start (absent most of the time: shows as down, harmless).
       - targets: ['modelops-gateway-test:8081']
         labels: { stack: test }
+      # M10: the gateway of the kind platform (`pnpm kind:up`), through its admin NodePort on the
+      # kind node, which is attached to this network. Down whenever kind is not running: harmless.
+      - targets: ['modelops-control-plane:30089']
+        labels: { stack: kind }
+
+  # M10: CPU and memory of the pods on kind (the kubelet's cAdvisor endpoint, read-only port, see
+  # infra/kind/cluster.yaml). Only ModelOps namespaces and only the series the dashboard uses are
+  # kept, so the TSDB stays small. Down whenever kind is not running: harmless.
+  - job_name: kubelet-cadvisor
+    metrics_path: /metrics/cadvisor
+    scrape_interval: 15s
+    static_configs:
+      - targets: ['modelops-control-plane:10255']
+        labels: { stack: kind }
+    metric_relabel_configs:
+      - source_labels: [namespace]
+        regex: modelops|modelops-models
+        action: keep
+      - source_labels: [__name__]
+        regex: container_cpu_usage_seconds_total|container_memory_working_set_bytes|container_spec_cpu_quota|container_spec_cpu_period|container_spec_memory_limit_bytes|container_oom_events_total
+        action: keep
+      - source_labels: [container]
+        regex: ''
+        action: drop

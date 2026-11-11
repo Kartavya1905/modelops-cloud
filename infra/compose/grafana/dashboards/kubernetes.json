@@ -1,0 +1,237 @@
+{
+  "uid": "modelops-kubernetes",
+  "title": "ModelOps · Kubernetes pods",
+  "description": "M10: CPU and memory of the pods on kind against their limits (kubelet cAdvisor). Model servers run in modelops-models, one pod per revision; the control plane in modelops.",
+  "tags": ["modelops", "kubernetes"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "editable": false,
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Model servers: CPU used, share of the pod limit",
+      "description": "rate of CPU seconds / (cfs quota / period) per pod. Limits come from the pod spec (requests = limits, 500m by default)",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"modelops-models\", container=\"model-server\"}[1m])) / max by (pod) (container_spec_cpu_quota{namespace=\"modelops-models\", container=\"model-server\"} / container_spec_cpu_period{namespace=\"modelops-models\", container=\"model-server\"})",
+          "legendFormat": "{{pod}}"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.8
+              },
+              {
+                "color": "red",
+                "value": 0.95
+              }
+            ]
+          },
+          "custom": {
+            "thresholdsStyle": {
+              "mode": "line+area"
+            }
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Model servers: memory used, share of the pod limit",
+      "description": "working set / memory limit per pod (512Mi by default). At 100 % the kernel OOM-kills the model server; the reconciler restarts it within its budget",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (pod) (container_memory_working_set_bytes{namespace=\"modelops-models\", container=\"model-server\"}) / max by (pod) (container_spec_memory_limit_bytes{namespace=\"modelops-models\", container=\"model-server\"})",
+          "legendFormat": "{{pod}}"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.8
+              },
+              {
+                "color": "red",
+                "value": 0.95
+              }
+            ]
+          },
+          "custom": {
+            "thresholdsStyle": {
+              "mode": "line+area"
+            }
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Control plane: CPU",
+      "description": "api, worker, web, gateway (cores)",
+      "gridPos": {
+        "x": 0,
+        "y": 9,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (container) (rate(container_cpu_usage_seconds_total{namespace=\"modelops\"}[1m]))",
+          "legendFormat": "{{container}}"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Control plane: memory (working set)",
+      "description": "api, worker, web, gateway",
+      "gridPos": {
+        "x": 12,
+        "y": 9,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (container) (container_memory_working_set_bytes{namespace=\"modelops\"})",
+          "legendFormat": "{{container}}"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "OOM kills (model servers)",
+      "description": "container_oom_events_total increase over 5 minutes",
+      "gridPos": {
+        "x": 0,
+        "y": 17,
+        "w": 24,
+        "h": 6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (pod) (increase(container_oom_events_total{namespace=\"modelops-models\", container=\"model-server\"}[5m]))",
+          "legendFormat": "{{pod}}"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "min": 0,
+          "decimals": 0,
+          "custom": {
+            "axisSoftMax": 1
+          }
+        },
+        "overrides": []
+      }
+    }
+  ],
+  "templating": {
+    "list": []
+  }
+}

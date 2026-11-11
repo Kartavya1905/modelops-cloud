@@ -1,0 +1,196 @@
+{
+ "revisions": [
+  {
+   "id": "d9fafb54-f4b2-4dfc-93cd-cd6f7e4c24c7",
+   "restartCount": 0
+  },
+  {
+   "id": "beac6bbe-00e3-41bc-8b5c-471232af81b3",
+   "restartCount": 0
+  }
+ ],
+ "events": [
+  {
+   "revision": "beac6bbe-00e3-41bc-8b5c-471232af81b3",
+   "from": null,
+   "to": "REQUESTED",
+   "message": "Deployment of 972bb9b1 requested",
+   "at": "2026-11-11T17:15:45.587+00:00"
+  },
+  {
+   "revision": "beac6bbe-00e3-41bc-8b5c-471232af81b3",
+   "from": "REQUESTED",
+   "to": "QUEUED",
+   "message": "Queued for the deployment worker",
+   "at": "2026-11-11T17:15:45.909+00:00"
+  },
+  {
+   "revision": "beac6bbe-00e3-41bc-8b5c-471232af81b3",
+   "from": "QUEUED",
+   "to": "PROVISIONING",
+   "message": "Worker picked up the deployment",
+   "at": "2026-11-11T17:15:45.948+00:00"
+  },
+  {
+   "revision": "beac6bbe-00e3-41bc-8b5c-471232af81b3",
+   "from": "PROVISIONING",
+   "to": "LOADING",
+   "message": "Container running; downloading and verifying the artifact",
+   "at": "2026-11-11T17:15:46.755+00:00"
+  },
+  {
+   "revision": "beac6bbe-00e3-41bc-8b5c-471232af81b3",
+   "from": "LOADING",
+   "to": "VERIFYING",
+   "message": "Artifact checksum verified and model loaded; running golden examples",
+   "at": "2026-11-11T17:15:52.784+00:00"
+  },
+  {
+   "revision": "beac6bbe-00e3-41bc-8b5c-471232af81b3",
+   "from": "VERIFYING",
+   "to": "READY",
+   "message": "Golden examples reproduced (16 rows); serving traffic",
+   "at": "2026-11-11T17:15:52.845+00:00"
+  },
+  {
+   "revision": "d9fafb54-f4b2-4dfc-93cd-cd6f7e4c24c7",
+   "from": null,
+   "to": "REQUESTED",
+   "message": "Canary deployment (10% of traffic) requested",
+   "at": "2026-11-11T17:26:50.994+00:00"
+  },
+  {
+   "revision": "d9fafb54-f4b2-4dfc-93cd-cd6f7e4c24c7",
+   "from": "REQUESTED",
+   "to": "QUEUED",
+   "message": "Queued for the deployment worker",
+   "at": "2026-11-11T17:26:51.104+00:00"
+  },
+  {
+   "revision": "d9fafb54-f4b2-4dfc-93cd-cd6f7e4c24c7",
+   "from": "QUEUED",
+   "to": "PROVISIONING",
+   "message": "Worker picked up the deployment",
+   "at": "2026-11-11T17:26:51.16+00:00"
+  },
+  {
+   "revision": "d9fafb54-f4b2-4dfc-93cd-cd6f7e4c24c7",
+   "from": "PROVISIONING",
+   "to": "LOADING",
+   "message": "Container running; downloading and verifying the artifact",
+   "at": "2026-11-11T17:26:52.111+00:00"
+  },
+  {
+   "revision": "d9fafb54-f4b2-4dfc-93cd-cd6f7e4c24c7",
+   "from": "LOADING",
+   "to": "VERIFYING",
+   "message": "Artifact checksum verified and model loaded; running golden examples",
+   "at": "2026-11-11T17:26:58.119+00:00"
+  },
+  {
+   "revision": "d9fafb54-f4b2-4dfc-93cd-cd6f7e4c24c7",
+   "from": "VERIFYING",
+   "to": "READY",
+   "message": "Golden examples reproduced (16 rows); serving traffic",
+   "at": "2026-11-11T17:26:58.193+00:00"
+  },
+  {
+   "revision": "d9fafb54-f4b2-4dfc-93cd-cd6f7e4c24c7",
+   "from": "READY",
+   "to": "READY",
+   "message": "Canary: receiving 10% of traffic next to revision 1",
+   "at": "2026-11-11T17:26:58.213+00:00"
+  },
+  {
+   "revision": "d9fafb54-f4b2-4dfc-93cd-cd6f7e4c24c7",
+   "from": "READY",
+   "to": "DRAINING",
+   "message": "Canary aborted: aborted by user",
+   "at": "2026-11-11T17:29:19.436+00:00"
+  },
+  {
+   "revision": "d9fafb54-f4b2-4dfc-93cd-cd6f7e4c24c7",
+   "from": "DRAINING",
+   "to": "RETIRED",
+   "message": "Grace period over; container removed",
+   "at": "2026-11-11T17:29:20.429+00:00"
+  },
+  {
+   "revision": "beac6bbe-00e3-41bc-8b5c-471232af81b3",
+   "from": "READY",
+   "to": "DRAINING",
+   "message": "Replaced by revision 3; kept warm for rollback",
+   "at": "2026-11-11T17:29:26.818+00:00"
+  },
+  {
+   "revision": "beac6bbe-00e3-41bc-8b5c-471232af81b3",
+   "from": "DRAINING",
+   "to": "READY",
+   "message": "Rollback: serving again (it was still warm)",
+   "at": "2026-11-11T17:29:27.996+00:00"
+  },
+  {
+   "revision": "beac6bbe-00e3-41bc-8b5c-471232af81b3",
+   "from": "READY",
+   "to": "DRAINING",
+   "message": "Rolled back to revision 3",
+   "at": "2026-11-11T17:29:30.185+00:00"
+  },
+  {
+   "revision": "beac6bbe-00e3-41bc-8b5c-471232af81b3",
+   "from": "DRAINING",
+   "to": "READY",
+   "message": "Rollback: serving again (it was still warm)",
+   "at": "2026-11-11T17:29:32.362+00:00"
+  },
+  {
+   "revision": "beac6bbe-00e3-41bc-8b5c-471232af81b3",
+   "from": "READY",
+   "to": "DRAINING",
+   "message": "Rolled back to revision 3",
+   "at": "2026-11-11T17:29:34.534+00:00"
+  },
+  {
+   "revision": "beac6bbe-00e3-41bc-8b5c-471232af81b3",
+   "from": "DRAINING",
+   "to": "READY",
+   "message": "Rollback: serving again (it was still warm)",
+   "at": "2026-11-11T17:29:36.688+00:00"
+  },
+  {
+   "revision": "beac6bbe-00e3-41bc-8b5c-471232af81b3",
+   "from": "READY",
+   "to": "DRAINING",
+   "message": "Rolled back to revision 3",
+   "at": "2026-11-11T17:29:38.848+00:00"
+  },
+  {
+   "revision": "beac6bbe-00e3-41bc-8b5c-471232af81b3",
+   "from": "DRAINING",
+   "to": "READY",
+   "message": "Rollback: serving again (it was still warm)",
+   "at": "2026-11-11T17:29:41.03+00:00"
+  },
+  {
+   "revision": "beac6bbe-00e3-41bc-8b5c-471232af81b3",
+   "from": "READY",
+   "to": "DRAINING",
+   "message": "Rolled back to revision 3",
+   "at": "2026-11-11T17:29:43.199+00:00"
+  },
+  {
+   "revision": "beac6bbe-00e3-41bc-8b5c-471232af81b3",
+   "from": "DRAINING",
+   "to": "READY",
+   "message": "Rollback: serving again (it was still warm)",
+   "at": "2026-11-11T17:29:45.358+00:00"
+  },
+  {
+   "revision": "beac6bbe-00e3-41bc-8b5c-471232af81b3",
+   "from": "READY",
+   "to": "DRAINING",
+   "message": "Rolled back to revision 3",
+   "at": "2026-11-11T17:29:47.507+00:00"
+  }
+ ]
+}

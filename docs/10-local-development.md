@@ -18,16 +18,18 @@ Checked on 2026-11-03 on the target laptop (31 GB RAM, 10 logical CPUs, ~157 GB 
 | **Node.js 24 LTS** | M1 | ✅ 24.22.2 (installed in M1) | `winget install Schniz.fnm` → `fnm install 24` → `fnm default 24` |
 | **pnpm** | M1 | ✅ 12.16.1 (installed in M1) | `npm install -g pnpm@12.16.1` (`corepack enable` failed on this machine) |
 | **uv** (Python packaging) | M3 | ✅ 0.13.7 (installed in M1) | `winget install astral-sh.uv` |
+| kubectl | M10 | ✅ 1.36.1 (ships with Docker Desktop) | — |
+| **kind** | M10 | ✅ 0.33.0 (installed in M10) | `winget install Kubernetes.kind` |
+| **Terraform** (or OpenTofu) | M11 | ❌ | `winget install Hashicorp.Terraform` |
+| **k6** | M12 | — (runs in Docker: `grafana/k6`) | — |
 
 **One-time shell setup for fnm (PowerShell).** fnm only puts Node on `PATH` after this line is in your profile. Open it with `notepad $PROFILE`, add the line, and restart the terminal:
 
 ```powershell
 fnm env --use-on-cd --shell powershell | Out-String | Invoke-Expression
 ```
-| kubectl | M10 | ✅ 1.36.1 | — |
-| **kind** | M10 | ❌ | `winget install Kubernetes.kind` |
-| **Terraform** (or OpenTofu) | M11 | ❌ | `winget install Hashicorp.Terraform` |
-| **k6** | M12 | ❌ | `winget install k6 --source winget` |
+
+`pnpm kind:up` looks for `kind` and `kubectl` on `PATH`; set `KIND=` / `KUBECTL=` to full paths if they live elsewhere.
 
 > Why `fnm` instead of the Node LTS winget package: `OpenJS.NodeJS.LTS` now installs Node **26**. The project pins Node **24** ([ADR-0007](adr/0007-version-policy.md)), and fnm reads `.node-version` automatically.
 
@@ -56,9 +58,14 @@ All host ports bind to `127.0.0.1` and are set in `.env`. Defaults deliberately 
 | Gateway (admin) | `18089` | M5 | Internal: worker probes (token) and `/metrics` |
 | Docker socket proxy | `12375` | M5 | Worker only; containers + images APIs only |
 | Prometheus | `19090` | M6 | Scrapes the gateways every 5 s; the API reads it via allow-listed queries |
-| Grafana | `13001` | M10 | observability profile |
+| Grafana | `13001` | M10 | `obs` profile; user `admin`, password `MO_GRAFANA_ADMIN_PASSWORD` in `.env` |
+| Tempo | `13200` | M10 | `obs` profile; trace queries (tests, debugging) |
+| OTel Collector (OTLP/HTTP) | `14318` | M10 | `obs` profile; the API and worker on the host send traces here |
 | ML worker (validator) | `18100` | M4 | Bound to 127.0.0.1; every request needs `X-ModelOps-Token` (238 MiB measured idle) |
 | Model servers | — | M5 | internal `inference` network only |
+| **kind:** web / API | `13400` / `14400` | M10 | NodePorts 30300 / 30400 of the platform on Kubernetes (`pnpm kind:up`) |
+| **kind:** gateway public / admin | `18188` / `18189` | M10 | NodePorts 30088 / 30089 |
+| **kind:** test gateway | `18198` / `18199` | M10 | started by `pnpm --filter @modelops/api test:k8s` |
 
 ## 4. Memory budget
 
@@ -76,7 +83,7 @@ All host ports bind to `127.0.0.1` and are set in `.env`. Defaults deliberately 
 | Web (`next dev`) | 400–900 MB |
 | Model servers (each, demo models) | 120–250 MB |
 | **Core total with 2 revisions** | **≈ 2–3.5 GB** |
-| Observability profile (Prometheus, Grafana, OTel Collector, Tempo, cAdvisor) | +0.5–1 GB |
+| Observability profile (Grafana, OTel Collector, Tempo; Prometheus is in the core stack since M6) | +0.5–1 GB |
 | kind cluster (M10, instead of Compose app services) | +2–3 GB |
 | Training PyTorch CPU (transient) | 1–2 GB |
 
@@ -92,6 +99,9 @@ pnpm env:init         # create .env with random secrets (safe to re-run; never o
 pnpm dev:up           # build + start Postgres, Redis, SeaweedFS, MLflow; waits for healthchecks
 pnpm dev              # API (:4000) + web (:3300) in watch mode
 pnpm test:smoke       # end-to-end environment check (run while `pnpm dev` is up)
+pnpm check:hardening  # what Docker actually applied: users, read-only roots, capabilities, limits (M9)
+pnpm tf:check         # AWS Terraform: fmt, validate, tflint, checkov in containers; never applies (M11)
+pnpm test:chaos       # real faults on a throwaway database: kill the worker, flush/restart Redis, pause Postgres (M9)
 pnpm dev:ps           # container status
 pnpm dev:logs         # last 100 log lines per service
 pnpm dev:down         # stop containers, keep data
@@ -108,16 +118,38 @@ pnpm demo:drift --endpoint <slug> --key <mo_…> --phase concept    # labels fli
 
 Turn on **Capture inputs** on the endpoint page before `demo:drift`, then press **Run drift check**.
 
-Planned: `pnpm dev:obs` (M10).
+Observability and Kubernetes (M10):
+
+```bash
+pnpm dev:obs          # + OTel Collector, Tempo, Grafana (http://127.0.0.1:13001); grants Grafana's read-only DB role
+pnpm kind:up          # the platform on kind: cluster, images, database modelops_kind, kubectl apply -k, rollout
+pnpm kind:up --no-build   # same, reusing the modelops/*:dev images already built
+pnpm kind:smoke       # acceptance: upload -> validate -> deploy as a pod -> predict -> Prometheus/Tempo/Grafana
+pnpm --filter @modelops/api test:k8s   # lifecycle tests with model servers as kind pods (needs kind:up)
+pnpm kind:down        # delete the cluster (database modelops_kind is kept)
+```
+
+The kind platform is separate from the Docker one: database `modelops_kind`, Redis DB 1, instance id `kind`, its own gateway. Both can run at once; in Grafana pick **Stack: kind** and **Database: ModelOps DB (kind)**. If pods cannot resolve `postgres`, `redis` or `seaweedfs`, the kind node is missing a compose network: `pnpm kind:up --no-build` re-attaches it (re-running it is safe).
 
 > `pnpm setup` is a built-in pnpm command (it configures `PNPM_HOME`), which is why our script is named `env:init`.
+
+### Upgrading a stack created before M9
+
+M9 runs SeaweedFS as user 1000 instead of root. A volume created earlier has root-owned directories, so SeaweedFS stops with *"please verify /data is writable"*. Fix it once (it keeps your data):
+
+```bash
+docker run --rm --user 0 -v modelops_s3data:/data --entrypoint chown chrislusf/seaweedfs:4.52 -R 1000:1000 /data
+pnpm dev:up
+```
+
+Postgres and Redis already owned their volumes as uid 999, so they need nothing. Alternatively `pnpm dev:clean` starts from empty volumes.
 
 ## 6. Cleanup
 
 ```bash
 pnpm dev:clean        # stop containers AND delete volumes (DB, Redis, S3) + orphaned model servers
 docker image rm modelops/mlflow:3.17.2   # optional: remove the locally built MLflow image
-kind delete cluster --name modelops      # M10
+pnpm kind:down        # M10: delete the kind cluster
 ```
 
 `pnpm env:init -- --force` regenerates every secret. Run `pnpm dev:clean` straight afterwards, because Postgres keeps the passwords it was first initialised with.

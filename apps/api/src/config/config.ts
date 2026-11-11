@@ -46,6 +46,32 @@ const ConfigSchema = z.object({
   MO_API_KEY_PEPPER: z.string().min(32, 'must be at least 32 characters'),
   MO_DEPLOY_RELAY_MS: z.coerce.number().int().min(50).max(60_000).default(500),
   MO_RECONCILE_MS: z.coerce.number().int().min(200).max(600_000).default(15_000),
+  // M12: failed health checks in a row before a RUNNING model server counts as hung (docs/05).
+  MO_UNHEALTHY_STREAK: z.coerce.number().int().min(1).max(20).default(3),
+  // A crashed worker's deploy job is redelivered after its lock expires (renewed while it runs).
+  // M10: where model servers send traces (they live on the internal network). Empty = off.
+  MO_MODEL_SERVER_OTLP_ENDPOINT: z.string().default(''),
+  // M10: where model servers run. docker (socket proxy, M5) or kubernetes (kind, ADR-0005).
+  MO_RUNTIME_DRIVER: z.enum(['docker', 'kubernetes']).default('docker'),
+  MO_K8S_NAMESPACE: z
+    .string()
+    .regex(/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/)
+    .default('modelops-models'),
+  /** kubeconfig context to use from the host ('' = in-cluster service account, or the current one) */
+  MO_K8S_CONTEXT: z.string().default(''),
+  /**
+   * What model-server pods may reach besides DNS: comma-separated `cidr:port` (object storage,
+   * trace collector). Port-scoped on purpose: the compose services share one subnet, and a model
+   * server must reach S3 but never Postgres or Redis. '' = DNS only.
+   */
+  MO_K8S_EGRESS: z
+    .string()
+    .regex(
+      /^(?:\s*\d{1,3}(?:\.\d{1,3}){3}\/\d{1,2}:\d{1,5}\s*(?:,|$))*$/,
+      'MO_K8S_EGRESS must be comma-separated cidr:port entries',
+    )
+    .default(''),
+  MO_DEPLOY_LOCK_MS: z.coerce.number().int().min(5_000).max(600_000).default(30_000),
   MO_DRAIN_GRACE_MS: z.coerce.number().int().min(0).max(86_400_000).default(1_800_000),
   MO_CANARY_ANALYSIS_MS: z.coerce.number().int().min(200).max(600_000).default(15_000),
   // M6: dashboards read Prometheus through allow-listed queries only
@@ -104,7 +130,22 @@ export interface AppConfig {
     gatewayAdminUrl: string;
     gatewayToken: string;
     relayMs: number;
+    /** BullMQ lock of a running deploy job; bounds recovery after a worker crash (M9) */
+    lockMs: number;
+    /** M10: OTLP endpoint passed to model servers ('' = tracing off) */
+    modelServerOtlpEndpoint: string;
+    /** M10: runtime of model servers, and how they are addressed */
+    runtime: {
+      driver: 'docker' | 'kubernetes';
+      namespace: string;
+      context: string;
+      egress: { cidr: string; port: number }[];
+      /** DNS suffix of `mo-rev-<id>` ('' on Docker; `<namespace>.svc.cluster.local` on k8s) */
+      modelServerDomain: string;
+    };
     reconcileMs: number;
+    /** failed health checks in a row before a running model server is restarted */
+    unhealthyStreak: number;
     drainGraceMs: number;
     /** M8: how often the worker analyses running canaries */
     canaryAnalysisMs: number;
@@ -171,7 +212,24 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       gatewayAdminUrl: c.MO_GATEWAY_ADMIN_URL.replace(/\/+$/, ''),
       gatewayToken: c.MO_GATEWAY_INTERNAL_TOKEN,
       relayMs: c.MO_DEPLOY_RELAY_MS,
+      lockMs: c.MO_DEPLOY_LOCK_MS,
+      modelServerOtlpEndpoint: c.MO_MODEL_SERVER_OTLP_ENDPOINT,
+      runtime: {
+        driver: c.MO_RUNTIME_DRIVER,
+        namespace: c.MO_K8S_NAMESPACE,
+        context: c.MO_K8S_CONTEXT,
+        egress: c.MO_K8S_EGRESS.split(',')
+          .map((x) => x.trim())
+          .filter(Boolean)
+          .map((x) => {
+            const i = x.lastIndexOf(':');
+            return { cidr: x.slice(0, i), port: Number(x.slice(i + 1)) };
+          }),
+        modelServerDomain:
+          c.MO_RUNTIME_DRIVER === 'kubernetes' ? `${c.MO_K8S_NAMESPACE}.svc.cluster.local` : '',
+      },
       reconcileMs: c.MO_RECONCILE_MS,
+      unhealthyStreak: c.MO_UNHEALTHY_STREAK,
       drainGraceMs: c.MO_DRAIN_GRACE_MS,
       canaryAnalysisMs: c.MO_CANARY_ANALYSIS_MS,
       instanceId: c.MO_INSTANCE_ID,

@@ -36,6 +36,7 @@ export function testConfig(env: Record<string, string> = {}): AppConfig {
     MO_GATEWAY_URL: inject('gatewayUrl'),
     MO_GATEWAY_ADMIN_URL: inject('gatewayAdminUrl'),
     MO_INSTANCE_ID: inject('instanceId'),
+    ...inject('runtimeEnv'), // M10: kubernetes runs (namespace, context, egress)
     ...env,
   });
 }

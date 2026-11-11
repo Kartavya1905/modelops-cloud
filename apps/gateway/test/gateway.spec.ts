@@ -1,12 +1,14 @@
 import { createHmac, randomBytes } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { buildAdminApp, buildPublicApp, createMetrics } from '../src/app.js';
-import { loadConfig } from '../src/config.js';
+import { loadConfig, modelServerUrl } from '../src/config.js';
 import type { ApiKeyEntry, RoutingSnapshot } from '../src/contract.js';
 import { CircuitBreaker, RateLimiter, toMatrix } from '../src/guards.js';
 import { KeyVerifier } from '../src/keys.js';
 import { RoutingTable } from '../src/routing.js';
 import { bucketOf, fnv1a32, pickRevision } from '../src/split.js';
+import { NodeSDK } from '@opentelemetry/sdk-node';
+import { InMemorySpanExporter, SimpleSpanProcessor } from '@opentelemetry/sdk-trace';
 
 const PEPPER = 'p'.repeat(40);
 const TOKEN = 't'.repeat(40);
@@ -117,7 +119,7 @@ async function setup(
     () => undefined,
     () => 1_700_000_000_000,
   );
-  const calls: { url: string; body: unknown }[] = [];
+  const calls: { url: string; body: unknown; headers?: Record<string, string> }[] = [];
   const upstream =
     opts.upstream ??
     ((url: string, init?: RequestInit) => {
@@ -125,7 +127,7 @@ async function setup(
         return Promise.resolve(new Response(JSON.stringify({ status: 'ready' })));
       }
       const body = JSON.parse(init.body) as { inputs: number[][] };
-      calls.push({ url, body });
+      calls.push({ url, body, headers: init.headers as Record<string, string> });
       const res = new Response(
         JSON.stringify({
           outputs: {
@@ -179,7 +181,7 @@ describe('predict', () => {
       payload: { inputs: [{ c: -3, a: 1, b: 2.5 }] },
     });
     expect(res.statusCode).toBe(200);
-    expect(calls[0]).toEqual({
+    expect(calls[0]).toMatchObject({
       url: `http://mo-rev-${REV}:8000/v1/predict`,
       body: { inputs: [[1, 2.5, -3]] },
     });
@@ -651,5 +653,67 @@ describe('M8 canary routing', () => {
     expect(text).toMatch(
       new RegExp(`gateway_canary_fallback_total\\{[^}]*revision="${CANARY}"[^}]*\\} 3`),
     );
+  });
+});
+
+describe('M10 tracing', () => {
+  it('continues the caller trace into the model server and returns the trace id', async () => {
+    const exporter = new InMemorySpanExporter();
+    const processor = new SimpleSpanProcessor({ exporter });
+    const sdk = new NodeSDK({ spanProcessors: [processor] });
+    sdk.start();
+    try {
+      const { app, store, calls } = await setup();
+      const k = makeKey();
+      store.set(k.prefix, k.entry);
+      const traceId = '4bf92f3577b34da6a3ce929d0e0e4736';
+      const res = await app.inject({
+        method: 'POST',
+        url: '/v1/endpoints/churn/predict',
+        headers: {
+          authorization: `Bearer ${k.token}`,
+          traceparent: `00-${traceId}-00f067aa0ba902b7-01`,
+        },
+        payload: { inputs: [row] },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.headers['x-trace-id']).toBe(traceId);
+      // The model server gets a traceparent of the same trace, from the gateway's client span.
+      const sent = calls[0]?.headers?.traceparent ?? '';
+      expect(sent).toMatch(new RegExp(`^00-${traceId}-[0-9a-f]{16}-01$`));
+      await processor.forceFlush(); // export is asynchronous
+      const spans = exporter.getFinishedSpans();
+      const server = spans.find((s) => s.name === 'POST /v1/endpoints/:slug/predict');
+      const client = spans.find((s) => s.name === 'model-server POST /v1/predict');
+      expect(server?.attributes).toMatchObject({ 'modelops.revision_id': REV });
+      expect(client?.parentSpanContext?.spanId).toBe(server?.spanContext().spanId);
+      expect(sent.split('-')[2]).toBe(client?.spanContext().spanId);
+    } finally {
+      await sdk.shutdown();
+    }
+  });
+});
+
+describe('M10 model-server addressing', () => {
+  const base = {
+    REDIS_URL: 'redis://x',
+    MO_API_KEY_PEPPER: PEPPER,
+    MO_GATEWAY_INTERNAL_TOKEN: TOKEN,
+  };
+  it('Docker: bare mo-rev-<id> names only', () => {
+    const c = loadConfig(base);
+    expect(modelServerUrl(c, REV)).toBe(`http://mo-rev-${REV}:8000`);
+    expect(c.upstreamPattern.test(`mo-rev-${REV}`)).toBe(true);
+    expect(c.upstreamPattern.test(`mo-rev-${REV}.evil.example`)).toBe(false);
+  });
+  it('Kubernetes: the namespace domain, and nothing else', () => {
+    const c = loadConfig({ ...base, MO_MODEL_SERVER_DOMAIN: 'modelops-models.svc.cluster.local' });
+    const host = `mo-rev-${REV}.modelops-models.svc.cluster.local`;
+    expect(modelServerUrl(c, REV)).toBe(`http://${host}:8000`);
+    expect(c.upstreamPattern.test(host)).toBe(true);
+    expect(c.upstreamPattern.test(`mo-rev-${REV}`)).toBe(false);
+    // dots are literal: no lookalike domains
+    expect(c.upstreamPattern.test(`mo-rev-${REV}.modelops-modelsXsvc.cluster.local`)).toBe(false);
+    expect(() => loadConfig({ ...base, MO_MODEL_SERVER_DOMAIN: 'evil/../x' })).toThrow();
   });
 });

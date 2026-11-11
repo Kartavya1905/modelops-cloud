@@ -1,0 +1,62 @@
+# Model servers: deny everything by default. The worker adds one policy per revision (ingress only
+# from gateway pods on 8000; egress only DNS and the configured `cidr:port` list, MO_K8S_EGRESS).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: modelops-models
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+# Control plane: no inbound traffic except to the three exposed services below. Egress stays
+# open: the platform talks to Postgres, Redis, S3, MLflow, the ml-worker, the collector and (the
+# worker) the Kubernetes API. See docs/milestones/m10 (deviations).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: modelops
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-api
+  namespace: modelops
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: api }
+  policyTypes: [Ingress]
+  ingress:
+    - ports: [{ protocol: TCP, port: 4000 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-web
+  namespace: modelops
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: web }
+  policyTypes: [Ingress]
+  ingress:
+    - ports: [{ protocol: TCP, port: 3300 }]
+---
+# Public inference port 8080 for everyone. The admin port 8081 (internal token; worker probes,
+# Prometheus scrapes through the NodePort) is reachable too: kind exposes it on 127.0.0.1 only.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-gateway
+  namespace: modelops
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: gateway }
+  policyTypes: [Ingress]
+  ingress:
+    - ports:
+        - { protocol: TCP, port: 8080 }
+        - { protocol: TCP, port: 8081 }

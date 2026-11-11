@@ -1,0 +1,101 @@
+{
+ "run": "2026-11-11T1715",
+ "headline": {
+  "steady_requests": {
+   "value": 9001,
+   "unit": "requests",
+   "source": "benchmarks/results/2026-11-11T1715/steady.json",
+   "field": "metrics.http_reqs.values.count"
+  },
+  "steady_failed": {
+   "value": 0,
+   "unit": "requests",
+   "source": "benchmarks/results/2026-11-11T1715/steady.json",
+   "field": "metrics.http_req_failed.values.passes"
+  },
+  "steady_p50_ms": {
+   "value": 6.4,
+   "unit": "ms",
+   "source": "benchmarks/results/2026-11-11T1715/steady.json",
+   "field": "metrics.http_req_duration.values.med"
+  },
+  "steady_p95_ms": {
+   "value": 23.1,
+   "unit": "ms",
+   "source": "benchmarks/results/2026-11-11T1715/steady.json",
+   "field": "metrics.http_req_duration.values[\"p(95)\"]"
+  },
+  "steady_p99_ms": {
+   "value": 71.4,
+   "unit": "ms",
+   "source": "benchmarks/results/2026-11-11T1715/steady.json",
+   "field": "metrics.http_req_duration.values[\"p(99)\"]"
+  },
+  "gateway_overhead_p50_ms": {
+   "value": 3.27,
+   "unit": "ms",
+   "source": "benchmarks/results/2026-11-11T1715/direct.json",
+   "field": "steady p50 - direct p50"
+  },
+  "gateway_overhead_p95_ms": {
+   "value": 16.78,
+   "unit": "ms",
+   "source": "benchmarks/results/2026-11-11T1715/direct.json",
+   "field": "steady p95 - direct p95"
+  },
+  "ramp_sustained_rps": {
+   "value": 50,
+   "unit": "req/s",
+   "source": "benchmarks/results/2026-11-11T1715/ramp.json",
+   "field": "metrics[\"http_reqs{scenario:rps_50}\"]"
+  },
+  "ramp_sustained_p95_ms": {
+   "value": 17.2,
+   "unit": "ms",
+   "source": "benchmarks/results/2026-11-11T1715/ramp.json",
+   "field": "metrics[\"http_req_duration{scenario:rps_50}\"].values[\"p(95)\"]"
+  },
+  "ramp_restarts_before_fix": {
+   "value": 2,
+   "unit": "restarts",
+   "source": "benchmarks/results/2026-11-11T1715/../2026-11-11T1023/events.json",
+   "field": "sum of revisions[].restartCount"
+  },
+  "ramp_restarts_after_fix": {
+   "value": 0,
+   "unit": "restarts",
+   "source": "benchmarks/results/2026-11-11T1715/events.json",
+   "field": "sum of revisions[].restartCount"
+  },
+  "canary_share_percent": {
+   "value": 10.58,
+   "unit": "%",
+   "source": "benchmarks/results/2026-11-11T1715/canary.json",
+   "field": "responses_by_revision{revision:<canary>} / all"
+  },
+  "canary_responses": {
+   "value": 6001,
+   "unit": "responses",
+   "source": "benchmarks/results/2026-11-11T1715/canary.json",
+   "field": "responses_by_revision"
+  },
+  "rollback_median_ms": {
+   "value": 113.8,
+   "unit": "ms",
+   "source": "benchmarks/results/2026-11-11T1715/rollback.json",
+   "field": "median of trials[].servedMs"
+  },
+  "rollback_max_ms": {
+   "value": 145.4,
+   "unit": "ms",
+   "source": "benchmarks/results/2026-11-11T1715/rollback.json",
+   "field": "max of trials[].servedMs"
+  },
+  "footprint_gib": {
+   "value": 2.45,
+   "unit": "GiB",
+   "source": "benchmarks/results/2026-11-11T1715/footprint.json",
+   "field": "totalMiB / 1024"
+  }
+ }
+}

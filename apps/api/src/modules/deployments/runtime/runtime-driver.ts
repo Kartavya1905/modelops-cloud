@@ -39,6 +39,10 @@ export const RUNTIME_DRIVER = Symbol('RUNTIME_DRIVER');
 
 export const containerName = (revisionId: string) => `mo-rev-${revisionId}`;
 
+/** M10: how the gateway reaches a revision's model server, for the configured runtime. */
+export const modelServerUrl = (revisionId: string, domain: string) =>
+  `http://${containerName(revisionId)}${domain ? `.${domain}` : ''}:8000`;
+
 /** An infrastructure hiccup (Docker API timeout, storage 5xx): retry with backoff. */
 export class TransientError extends Error {
   override name = 'TransientError';

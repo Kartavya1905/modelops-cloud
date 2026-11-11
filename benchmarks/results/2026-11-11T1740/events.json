@@ -1,0 +1,52 @@
+{
+ "revisions": [
+  {
+   "id": "7420eb98-9da8-4cea-8175-43eb1eed2a9d",
+   "restartCount": 0
+  }
+ ],
+ "events": [
+  {
+   "revision": "7420eb98-9da8-4cea-8175-43eb1eed2a9d",
+   "from": null,
+   "to": "REQUESTED",
+   "message": "Deployment of d622da96 requested",
+   "at": "2026-11-11T17:40:14.075+00:00"
+  },
+  {
+   "revision": "7420eb98-9da8-4cea-8175-43eb1eed2a9d",
+   "from": "REQUESTED",
+   "to": "QUEUED",
+   "message": "Queued for the deployment worker",
+   "at": "2026-11-11T17:40:14.26+00:00"
+  },
+  {
+   "revision": "7420eb98-9da8-4cea-8175-43eb1eed2a9d",
+   "from": "QUEUED",
+   "to": "PROVISIONING",
+   "message": "Worker picked up the deployment",
+   "at": "2026-11-11T17:40:14.318+00:00"
+  },
+  {
+   "revision": "7420eb98-9da8-4cea-8175-43eb1eed2a9d",
+   "from": "PROVISIONING",
+   "to": "LOADING",
+   "message": "Container running; downloading and verifying the artifact",
+   "at": "2026-11-11T17:40:15.01+00:00"
+  },
+  {
+   "revision": "7420eb98-9da8-4cea-8175-43eb1eed2a9d",
+   "from": "LOADING",
+   "to": "VERIFYING",
+   "message": "Artifact checksum verified and model loaded; running golden examples",
+   "at": "2026-11-11T17:40:20.964+00:00"
+  },
+  {
+   "revision": "7420eb98-9da8-4cea-8175-43eb1eed2a9d",
+   "from": "VERIFYING",
+   "to": "READY",
+   "message": "Golden examples reproduced (16 rows); serving traffic",
+   "at": "2026-11-11T17:40:21.017+00:00"
+  }
+ ]
+}

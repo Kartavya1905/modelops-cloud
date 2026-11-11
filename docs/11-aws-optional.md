@@ -84,7 +84,7 @@ flowchart LR
 - **Always-on** would cost roughly **$150–180/month**, which is why the design is short-lived by default.
 
 ### Cost controls (built into the Terraform design)
-- `desired_count = 0` by default: nothing runs unless explicitly scaled up.
+- `desired_count = 0` by default: no task runs unless explicitly scaled up. **Correction (M11):** the load balancer, the database and the load balancer's public addresses still bill by the hour, about $40/month idle, so only `terraform destroy` stops the cost ([cost.md](../infra/terraform/envs/demo/cost.md)).
 - AWS Budgets alarm resource at $5 (defined, not applied).
 - CloudWatch log retention 7 days; ECR lifecycle policy; S3 lifecycle on staging and capture prefixes.
 - Tags `project=modelops-cloud`, `ttl=<date>` on every resource.
@@ -101,3 +101,16 @@ checkov -d infra/terraform --quiet
 ```
 
 All of these run offline against provider schemas and require no AWS credentials.
+
+## 6. As built (M11, 2026-11-11)
+
+The design above is now Terraform in [`infra/terraform/`](../infra/terraform/): seven modules (`network`, `logging`, `ecr`, `s3`, `iam`, `database`, `ecs`) and one environment, `envs/demo`, which also holds the budget alarm. `pnpm tf:check` runs `terraform fmt`, `validate`, `tflint` (AWS ruleset) and `checkov` in pinned containers, locally and in the CI job `terraform`, with no account and no credentials. Nothing is ever applied.
+
+Changes from the design while building it:
+
+- **HTTPS only.** The load balancer has no port-80 listener at all (instead of an HTTP→HTTPS redirect), so it needs an ACM certificate and a domain. Paths route to services: `/api/*` → api, `/v1/*` → gateway, everything else → web.
+- **Secrets never in Terraform state.** Components read SSM SecureString parameters under `/modelops/<env>/<component>/`, created out of band; each execution role can read only its own path. The database master password is generated and kept by RDS in Secrets Manager.
+- **Service discovery** through a Cloud Map private namespace (`api.modelops.internal`, and `mo-rev-<id>.modelops.internal` for model servers: the gateway's `MO_MODEL_SERVER_DOMAIN`, as on Kubernetes).
+- **IAM is per component:** separate execution and task roles for each of the eight components; only the API, worker, ml-worker and MLflow task roles have any permission (S3, scoped to buckets); the worker's ECS permissions are limited to `mo-rev-*` services in this cluster and to passing the model-server roles. The CI role trusts only GitHub's OIDC tokens for this repository's `main` branch.
+- **Every checkov finding is fixed or skipped inline with its reason** (cost, or a static-analysis limit): 449 passed, 0 failed. The skips are listed in the [M11 doc](milestones/m11-cicd-terraform.md).
+- **Two application changes are needed before this could really run:** an `EcsDriver`, and S3 access through the task role instead of static keys. Both are listed in the [teardown runbook](runbooks/aws-teardown.md).

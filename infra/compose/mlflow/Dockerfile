@@ -1,7 +1,7 @@
 # MLflow tracking server + model registry, with the drivers the upstream image lacks:
 #   psycopg2 -> PostgreSQL backend store
 #   boto3    -> S3-compatible artifact store (SeaweedFS)
-FROM python:3.12.16-slim
+FROM python:3.12.16-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b
 
 ENV PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \

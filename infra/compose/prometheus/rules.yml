@@ -1,0 +1,57 @@
+# M10: alert rules for the inference data plane. Prometheus evaluates them every 15 s; they show in
+# Prometheus (/alerts) and Grafana. No Alertmanager locally: routing to people is an M11/AWS
+# concern. Every alert links its runbook (docs/runbooks/).
+groups:
+  - name: modelops-gateway
+    rules:
+      - alert: GatewayDown
+        # Only the dev stack's gateway: the integration tests' gateway is absent most of the time.
+        expr: up{job="gateway", stack="dev"} == 0
+        for: 1m
+        labels: { severity: critical }
+        annotations:
+          summary: The inference gateway is not answering Prometheus
+          runbook_url: docs/runbooks/gateway-down.md
+
+      - alert: EndpointHighServerErrorRate
+        expr: |
+          sum by (endpoint_id, endpoint) (rate(gateway_requests_total{code=~"5..", source="api"}[5m]))
+            / sum by (endpoint_id, endpoint) (rate(gateway_requests_total{source="api"}[5m])) > 0.05
+          and sum by (endpoint_id, endpoint) (rate(gateway_requests_total{source="api"}[5m])) > 0.2
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: '{{ $labels.endpoint }}: more than 5 % of client requests fail (5xx)'
+          runbook_url: docs/runbooks/high-error-rate.md
+
+      - alert: EndpointHighLatency
+        expr: |
+          histogram_quantile(0.95, sum by (le, endpoint_id, endpoint)
+            (rate(gateway_request_duration_seconds_bucket{source="api"}[5m]))) > 0.5
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: '{{ $labels.endpoint }}: p95 latency above 500 ms for 10 minutes'
+          runbook_url: docs/runbooks/high-latency.md
+
+      - alert: CanaryFallingBack
+        # The gateway is routing a canary's share to stable because its circuit is open.
+        expr: sum by (endpoint_id) (increase(gateway_canary_fallback_total[5m])) > 0
+        labels: { severity: warning }
+        annotations:
+          summary: A canary is failing; its traffic is being served by stable
+          runbook_url: docs/runbooks/canary-fallback.md
+
+      - alert: PredictionEventsDropped
+        expr: increase(gateway_events_dropped_total[10m]) > 0
+        labels: { severity: warning }
+        annotations:
+          summary: Prediction or feedback events could not be written to Redis
+          runbook_url: docs/runbooks/events-dropped.md
+
+      - alert: RateLimiterFailingOpen
+        expr: increase(gateway_rate_limit_fail_open_total[5m]) > 0
+        labels: { severity: warning }
+        annotations:
+          summary: The rate limiter cannot reach Redis and is letting requests through
+          runbook_url: docs/runbooks/rate-limiter-fail-open.md

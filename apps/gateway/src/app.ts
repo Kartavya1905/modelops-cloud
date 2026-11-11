@@ -1,7 +1,7 @@
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { Counter as PromCounter, Histogram, Registry, collectDefaultMetrics } from 'prom-client';
-import type { GatewayConfig } from './config.js';
+import { type GatewayConfig, modelServerUrl } from './config.js';
 import type { RoutedEndpoint, RoutedRevision } from './contract.js';
 import {
   type EventSink,
@@ -14,6 +14,7 @@ import { CircuitBreaker, type FieldError, RateLimiter, toMatrix } from './guards
 import type { KeyVerifier } from './keys.js';
 import type { RoutingTable } from './routing.js';
 import { pickRevision } from './split.js';
+import { SpanStatusCode, clientSpan, inServerSpan, traceIdOf } from './tracing.js';
 
 export interface Deps {
   config: GatewayConfig;
@@ -176,11 +177,44 @@ export function createPredictor(deps: Deps, metrics: Metrics) {
   const fetchFn = deps.fetchFn ?? fetch;
   const record = eventRecorder(deps, metrics);
 
-  return async function predict(
+  type PredictOpts = {
+    rateKey: string;
+    limitRps: number;
+    source: 'api' | 'playground';
+    started: number;
+  };
+  /** M10: every prediction is one SERVER span; the trace id goes back as X-Trace-Id. */
+  return function predict(
     req: FastifyRequest,
     reply: FastifyReply,
     endpoint: RoutedEndpoint,
-    opts: { rateKey: string; limitRps: number; source: 'api' | 'playground'; started: number },
+    opts: PredictOpts,
+  ) {
+    return inServerSpan(
+      'POST /v1/endpoints/:slug/predict',
+      req.headers,
+      {
+        'modelops.endpoint_id': endpoint.endpointId,
+        'modelops.endpoint': endpoint.slug,
+        'modelops.source': opts.source,
+      },
+      async (span) => {
+        const traceId = traceIdOf(span);
+        if (traceId) reply.header('X-Trace-Id', traceId);
+        const out = await predictInner(req, reply, endpoint, opts, span);
+        span.setAttribute('http.response.status_code', reply.statusCode);
+        if (reply.statusCode >= 500) span.setStatus({ code: SpanStatusCode.ERROR });
+        return out;
+      },
+    );
+  };
+
+  async function predictInner(
+    req: FastifyRequest,
+    reply: FastifyReply,
+    endpoint: RoutedEndpoint,
+    opts: PredictOpts,
+    span: import('@opentelemetry/api').Span,
   ) {
     const header = req.headers['x-routing-key'];
     const routingKey = typeof header === 'string' && ROUTING_KEY.test(header) ? header : req.id;
@@ -206,6 +240,11 @@ export function createPredictor(deps: Deps, metrics: Metrics) {
       rev = endpoint.revision;
       role = 'stable';
     }
+    span.setAttributes({
+      'modelops.revision_id': rev.id,
+      'modelops.model_version': String(rev.modelVersion),
+      'modelops.traffic_role': role,
+    });
     const labels = {
       endpoint_id: endpoint.endpointId,
       endpoint: endpoint.slug,
@@ -260,16 +299,28 @@ export function createPredictor(deps: Deps, metrics: Metrics) {
     const upstreamStart = performance.now();
     let res: Response | undefined;
     let timedOut = false;
+    const upstream = clientSpan('model-server POST /v1/predict', {
+      'modelops.revision_id': rev.id,
+      'server.address': hostname,
+    });
     try {
       res = await fetchFn(`${rev.url}/v1/predict`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-request-id': req.id },
+        headers: {
+          'content-type': 'application/json',
+          'x-request-id': req.id,
+          ...upstream.headers, // traceparent: the model server continues this trace
+        },
         body: JSON.stringify({ inputs: parsed.rows }),
         signal: AbortSignal.timeout(config.upstreamTimeoutMs),
       });
+      upstream.span.setAttribute('http.response.status_code', res.status);
+      if (res.status >= 500) upstream.span.setStatus({ code: SpanStatusCode.ERROR });
     } catch (err) {
       timedOut = (err as Error).name === 'TimeoutError';
+      upstream.span.setStatus({ code: SpanStatusCode.ERROR, message: (err as Error).name });
     } finally {
+      upstream.span.end();
       metrics.upstream.observe({ revision: rev.id }, (performance.now() - upstreamStart) / 1000);
     }
     if (!res) {
@@ -327,7 +378,7 @@ export function createPredictor(deps: Deps, metrics: Metrics) {
       outputs,
       latencyMs,
     };
-  };
+  }
 }
 
 /** Fire-and-forget: never awaited on the request path; failures are counted, not thrown. */
@@ -448,7 +499,7 @@ export function buildAdminApp(deps: Deps, metrics: Metrics): FastifyInstance {
       }
     });
     const upstream = (id: string) =>
-      /^[0-9a-f-]{36}$/.test(id) ? `http://mo-rev-${id}:8000` : null;
+      /^[0-9a-f-]{36}$/.test(id) ? modelServerUrl(config, id) : null;
 
     /**
      * UI playground (M6): the API calls this on behalf of a signed-in user, who has no API key.

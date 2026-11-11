@@ -39,6 +39,16 @@ class AuditEventDto {
   @ApiProperty({ format: 'date-time' }) createdAt!: string;
 }
 
+class AuditVerificationDto {
+  @ApiProperty({ description: 'Every event verified against its predecessor' }) intact!: boolean;
+  @ApiProperty({ description: 'Events verified (up to the first break)' }) checked!: number;
+  @ApiProperty({ type: Number, nullable: true, description: 'Chain position of the first break' })
+  brokenAt!: number | null;
+  @ApiProperty({ type: String, nullable: true }) reason!: string | null;
+  @ApiProperty({ type: String, nullable: true, description: 'Hash of the latest event (hex)' })
+  head!: string | null;
+}
+
 class AuditPageDto {
   @ApiProperty({ type: [AuditEventDto] }) data!: AuditEventDto[];
   @ApiProperty({ type: String, nullable: true }) nextCursor!: string | null;
@@ -56,5 +66,13 @@ export class AuditController {
   @ApiOkResponse({ type: AuditPageDto })
   list(@Param('orgId', new UuidParam('Organization')) orgId: string, @Query() q: AuditQuery) {
     return this.audit.list(orgId, q);
+  }
+
+  /** M9: tamper evidence. Recomputes the hash chain of this organization's audit log. */
+  @Get('verify')
+  @RequirePermission('audit:read')
+  @ApiOkResponse({ type: AuditVerificationDto })
+  verify(@Param('orgId', new UuidParam('Organization')) orgId: string) {
+    return this.audit.verify(orgId);
   }
 }

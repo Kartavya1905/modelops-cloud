@@ -1,0 +1,62 @@
+# Management API (NestJS). Settings: ConfigMap modelops-config + Secret modelops-secrets (overlay).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  namespace: modelops
+  labels: { app.kubernetes.io/name: api }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app.kubernetes.io/name: api }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: api }
+    spec:
+      automountServiceAccountToken: false # the API never talks to Kubernetes; the worker does
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000 # `node` in the image
+        runAsGroup: 1000
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: api
+          image: modelops/api:dev
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef: { name: modelops-config }
+            - secretRef: { name: modelops-secrets }
+          env:
+            - { name: OTEL_SERVICE_NAME, value: modelops-api }
+          ports: [{ name: http, containerPort: 4000 }]
+          readinessProbe:
+            httpGet: { path: /api/v1/health/ready, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet: { path: /api/v1/health/live, port: http }
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { cpu: '1', memory: 768Mi }
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+          volumeMounts: [{ name: tmp, mountPath: /tmp }]
+      volumes:
+        - name: tmp
+          emptyDir: { medium: Memory, sizeLimit: 64Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+  namespace: modelops
+spec:
+  type: NodePort
+  selector: { app.kubernetes.io/name: api }
+  ports:
+    - { name: http, port: 4000, targetPort: http, nodePort: 30400 } # -> 127.0.0.1:14400

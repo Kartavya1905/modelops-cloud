@@ -13,7 +13,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 
-const K6_IMAGE = 'grafana/k6:2.3.0';
+const K6_IMAGE =
+  'grafana/k6:2.3.0@sha256:2dd4756ec6e14e62778916e1eb850108e4b499304c02df56760fa0bdb0fba0b8';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 const { values: args } = parseArgs({

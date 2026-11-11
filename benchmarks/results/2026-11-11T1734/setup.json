@@ -1,0 +1,21 @@
+{
+ "endpoint": {
+  "id": "6ee0c6c8-b1f2-4990-a19e-3cb611a4354b",
+  "slug": "bench-2026-11-11t1734",
+  "rateLimitRps": 1000
+ },
+ "versions": [
+  {
+   "id": "e7e348fc-d1ec-4dc5-80e4-c6700bf15d07",
+   "kind": "sklearn",
+   "framework": "SKLEARN_ONNX"
+  },
+  {
+   "id": "bef07c70-52f8-46bb-82b0-67f2bc849e89",
+   "kind": "pytorch",
+   "framework": "PYTORCH_ONNX"
+  }
+ ],
+ "firstRevision": "2e254792-7846-4915-98ac-cdd23b0bfad9",
+ "requestBodies": 16
+}

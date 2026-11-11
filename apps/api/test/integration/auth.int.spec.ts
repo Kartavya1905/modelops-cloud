@@ -134,7 +134,7 @@ describe('POST /auth/login', () => {
     }
   });
 
-  it('blocks the 6th failed attempt within a minute with 429 + Retry-After, even with the right password', async () => {
+  it('SEC-16: blocks the 6th failed attempt within a minute with 429 + Retry-After, even with the right password', async () => {
     const user = await Client.register(app);
     for (let i = 0; i < 5; i++) {
       const r = await http()
@@ -176,7 +176,7 @@ describe('session lifecycle', () => {
     expect(res.headers['content-type']).toMatch(/application\/problem\+json/);
   });
 
-  it('logout requires the CSRF token and then revokes the session', async () => {
+  it('SEC-12: logout requires the CSRF token and then revokes the session', async () => {
     const user = await Client.register(app);
     const noCsrf = await user.agent.post(`${API}/auth/logout`);
     expect(noCsrf.status).toBe(403);
@@ -186,7 +186,7 @@ describe('session lifecycle', () => {
     expect((await user.get('/auth/me')).status).toBe(401);
   });
 
-  it('rejects a wrong CSRF token', async () => {
+  it('SEC-12: rejects a wrong CSRF token', async () => {
     const user = await Client.register(app);
     const res = await user.agent
       .post(`${API}/orgs`)

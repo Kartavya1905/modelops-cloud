@@ -1,0 +1,38 @@
+{
+ "startedAt": "2026-11-11T17:34:02.425Z",
+ "machine": {
+  "os": "Windows_NT 10.0.26300",
+  "cpu": "AMD Ryzen 9 9955HX 16-Core Processor           ",
+  "logicalCpus": 10,
+  "memoryGiB": 31.3,
+  "freeMemoryGiBAtStart": 3.7,
+  "docker": "29.9.2",
+  "dockerCpus": "10",
+  "dockerMemoryGiB": 15.3
+ },
+ "git": {
+  "commit": "a4f6bae14e6cfd0e1e2a029718122c60ae0e3ba7",
+  "uncommittedChanges": true
+ },
+ "limits": {
+  "gateway": {
+   "cpus": 1,
+   "memory": "256M"
+  },
+  "modelServer": {
+   "cpus": 0.5,
+   "memoryMb": 512
+  }
+ },
+ "reconciler": {
+  "unhealthyStreak": 1
+ },
+ "k6": "grafana/k6:2.3.0@sha256:2dd4756ec6e14e62778916e1eb850108e4b499304c02df56760fa0bdb0fba0b8",
+ "load": "k6 runs in a container on the compose network and calls the gateway container directly",
+ "runningContainers": {
+  "total": 99,
+  "modelops": 81,
+  "other": 18
+ },
+ "finishedAt": "2026-11-11T17:38:57.917Z"
+}

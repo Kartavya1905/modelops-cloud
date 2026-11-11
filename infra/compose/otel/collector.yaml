@@ -1,0 +1,29 @@
+# M10: OpenTelemetry Collector. Gateway, API, worker and model servers send OTLP here;
+# traces go to Tempo. One place to add sampling, attributes or another backend later.
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 200
+  batch:
+    timeout: 2s
+
+exporters:
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true # internal Docker network only
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp/tempo]

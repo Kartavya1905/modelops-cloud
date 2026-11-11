@@ -128,6 +128,8 @@ export class DockerDriver implements RuntimeDriver {
   async remove(revisionId: string): Promise<void> {
     const res = await this.call('DELETE', `/containers/${containerName(revisionId)}?force=true`);
     if (res.ok || res.status === 404) return;
+    // 409 "removal … is already in progress": someone (worker or reconciler) is removing it.
+    if (res.status === 409 && /already in progress/.test(await res.clone().text())) return;
     await this.fail(res, 'remove container');
   }
 

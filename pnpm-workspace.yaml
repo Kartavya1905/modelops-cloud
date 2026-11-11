@@ -13,6 +13,7 @@ allowBuilds:
   argon2: true
   msgpackr-extract: false
   prisma: true
+  protobufjs: false # OTel's protobuf dependency; its script only prints a version notice
 
 # openapi-typescript 7.13 declares `typescript: ^5.x`. TypeScript 6 keeps the same compiler API
 # and type generation was verified in M2 (packages/api-contract typechecks). Revisit on upgrade.

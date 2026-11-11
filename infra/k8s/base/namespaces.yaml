@@ -1,0 +1,17 @@
+# Pod Security Standards: both namespaces enforce `restricted` (non-root, no privilege
+# escalation, all capabilities dropped, RuntimeDefault seccomp). Model servers are untrusted code.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: modelops
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: modelops-models
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest

@@ -39,8 +39,14 @@ export class DeployWorker implements OnModuleInit, OnModuleDestroy {
         const isFinalAttempt = job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
         await this.processor.process(job.data.revisionId, { isFinalAttempt });
       },
-      // The lock is renewed while a job runs; a crashed worker's job is redelivered after it.
-      { connection: this.connection, concurrency: 4, lockDuration: 60_000 },
+      // The lock is renewed while a job runs (every lockMs / 2); a crashed worker's job is
+      // redelivered once it expires and a live worker's stalled check sees it (M9 chaos test).
+      {
+        connection: this.connection,
+        concurrency: 4,
+        lockDuration: this.config.deploy.lockMs,
+        stalledInterval: Math.min(30_000, this.config.deploy.lockMs),
+      },
     );
     this.worker.on('failed', (job, err) => {
       this.logger.warn(`deploy job ${job?.id ?? '?'} failed: ${err.message}`);

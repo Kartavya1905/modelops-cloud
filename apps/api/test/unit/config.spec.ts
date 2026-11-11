@@ -52,4 +52,10 @@ describe('loadConfig', () => {
       expect((err as Error).message).not.toContain('s3cret-value');
     }
   });
+
+  it('restarts a running model server after 3 failed checks in a row unless configured (M12)', () => {
+    expect(loadConfig(valid).deploy.unhealthyStreak).toBe(3);
+    expect(loadConfig({ ...valid, MO_UNHEALTHY_STREAK: '1' }).deploy.unhealthyStreak).toBe(1);
+    expect(() => loadConfig({ ...valid, MO_UNHEALTHY_STREAK: '0' })).toThrow(/MO_UNHEALTHY_STREAK/);
+  });
 });

@@ -244,6 +244,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/orgs/{orgId}/audit-events/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["Audit_verify"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/orgs/{orgId}/endpoints/{endpointId}": {
         parameters: {
             query?: never;
@@ -902,6 +918,17 @@ export interface components {
         AuditPageDto: {
             data: components["schemas"]["AuditEventDto"][];
             nextCursor: string | null;
+        };
+        AuditVerificationDto: {
+            /** @description Chain position of the first break */
+            brokenAt: number | null;
+            /** @description Events verified (up to the first break) */
+            checked: number;
+            /** @description Hash of the latest event (hex) */
+            head: string | null;
+            /** @description Every event verified against its predecessor */
+            intact: boolean;
+            reason: string | null;
         };
         CanaryCheckDto: {
             /** @description This check aborted the canary */
@@ -2207,6 +2234,27 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuditPageDto"];
+                };
+            };
+        };
+    };
+    Audit_verify: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditVerificationDto"];
                 };
             };
         };

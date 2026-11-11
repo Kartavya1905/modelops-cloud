@@ -1,0 +1,68 @@
+# Inference gateway. Its pods carry `app.kubernetes.io/name: gateway`, the only label the
+# per-revision NetworkPolicies let through to model servers.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+  namespace: modelops
+  labels: { app.kubernetes.io/name: gateway }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app.kubernetes.io/name: gateway }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: gateway }
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000 # `node` in the image
+        runAsGroup: 1000
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: gateway
+          image: modelops/gateway:dev
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: REDIS_URL
+              valueFrom: { secretKeyRef: { name: modelops-secrets, key: REDIS_URL } }
+            - name: MO_API_KEY_PEPPER
+              valueFrom: { secretKeyRef: { name: modelops-secrets, key: MO_API_KEY_PEPPER } }
+            - name: MO_GATEWAY_INTERNAL_TOKEN
+              valueFrom:
+                secretKeyRef: { name: modelops-secrets, key: MO_GATEWAY_INTERNAL_TOKEN }
+            - { name: MO_MODEL_SERVER_DOMAIN, value: modelops-models.svc.cluster.local }
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              valueFrom:
+                configMapKeyRef: { name: modelops-config, key: OTEL_EXPORTER_OTLP_ENDPOINT }
+          ports:
+            - { name: public, containerPort: 8080 }
+            - { name: admin, containerPort: 8081 }
+          readinessProbe:
+            httpGet: { path: /healthz, port: admin }
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /healthz, port: admin }
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { cpu: '1', memory: 256Mi }
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway
+  namespace: modelops
+spec:
+  type: NodePort
+  selector: { app.kubernetes.io/name: gateway }
+  ports:
+    - { name: public, port: 8080, targetPort: public, nodePort: 30088 } # -> 127.0.0.1:18188
+    - { name: admin, port: 8081, targetPort: admin, nodePort: 30089 } # -> 127.0.0.1:18189

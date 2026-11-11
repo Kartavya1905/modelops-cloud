@@ -1,3 +1,4 @@
+import './tracing'; // M10: must load before anything it instruments
 import 'reflect-metadata';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';

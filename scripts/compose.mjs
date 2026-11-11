@@ -4,6 +4,8 @@
 //
 //   node scripts/compose.mjs up      build (incl. the model-server image) + start + wait until healthy
 //   node scripts/compose.mjs down    stop containers (data volumes are kept)
+//   node scripts/compose.mjs obs     M10: also start the observability profile (Collector, Tempo,
+//                                    Grafana) and (re)apply Grafana's read-only database role
 //   node scripts/compose.mjs <any docker compose args...>
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
@@ -31,7 +33,8 @@ const base = [
 const [command = 'ps', ...rest] = process.argv.slice(2);
 const presets = {
   up: ['up', '-d', '--build', '--wait', '--wait-timeout', '300'],
-  down: ['down'],
+  obs: ['--profile', 'obs', 'up', '-d', '--wait', '--wait-timeout', '300'],
+  down: ['--profile', 'obs', 'down'],
   logs: ['logs', '--tail', '100'],
 };
 const args = [...base, ...(presets[command] ?? [command]), ...rest];
@@ -47,4 +50,16 @@ if (command === 'up') {
 }
 
 const result = spawnSync('docker', args, { stdio: 'inherit', cwd: root });
-process.exit(result.status ?? 1);
+if (result.status !== 0) process.exit(result.status ?? 1);
+
+// The role script is idempotent: it creates the role on an existing volume (where the init scripts
+// no longer run) and grants SELECT on tables that only exist after `pnpm db:deploy`.
+if (command === 'obs') {
+  const role = spawnSync(
+    'docker',
+    [...base, 'exec', '-T', 'postgres', 'sh', '/docker-entrypoint-initdb.d/02-grafana.sh'],
+    { stdio: 'inherit', cwd: root },
+  );
+  process.exit(role.status ?? 1);
+}
+process.exit(0);

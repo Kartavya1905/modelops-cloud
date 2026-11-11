@@ -1,6 +1,7 @@
 // Worker process entrypoint (ADR-0001: same codebase as the API, separate process).
 // Runs background jobs (M4: model validation) so slow work never blocks HTTP requests.
 //   node dist/worker.js
+import './tracing'; // M10: must load before anything it instruments
 import 'reflect-metadata';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';

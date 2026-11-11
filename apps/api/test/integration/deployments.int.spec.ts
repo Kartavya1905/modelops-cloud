@@ -1,7 +1,7 @@
 import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import type { TestingModule } from '@nestjs/testing';
-import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, inject, it, vi } from 'vitest';
 import { ArtifactStore } from '../../src/common/storage/artifact-store';
 import { APP_CONFIG, type AppConfig } from '../../src/config/config';
 import { DataPlanePublisher } from '../../src/modules/deployments/dataplane';
@@ -9,6 +9,7 @@ import { DeployProcessor } from '../../src/modules/deployments/deploy.processor'
 import { DeployQueue } from '../../src/modules/deployments/deploy.queue';
 import { OutboxRelay } from '../../src/modules/deployments/outbox.relay';
 import { Reconciler } from '../../src/modules/deployments/reconciler';
+import { ModelServerProbe } from '../../src/modules/deployments/probe';
 import {
   RUNTIME_DRIVER,
   type RuntimeDriver,
@@ -16,11 +17,14 @@ import {
 import { ValidationService } from '../../src/modules/validation/validation.service';
 import { type Bundle, loadBundle, uniqueGolden, uniqueModel } from './bundles';
 import { Client, createTestApp, createTestWorker, prismaOf, type Problem } from './helpers';
+import { readPod, tcpFromNewPod, tcpFromPod } from './kind-runtime';
 
 /**
  * M5 end to end against real infrastructure: Postgres, Redis, SeaweedFS, the ml-worker (to
  * validate versions), Docker through the socket proxy (one model-server container per revision)
  * and a gateway container on the internal inference network.
+ * M10: with `MO_TEST_RUNTIME=kubernetes` (`pnpm test:k8s`) the same tests run against the
+ * KubernetesDriver: one pod + Service + NetworkPolicy per revision in kind, and a gateway pod.
  * The worker's loops are off: tests drive relay -> processor -> reconciler step by step.
  */
 interface Revision {
@@ -56,6 +60,9 @@ let features: string[];
 const sklearn = loadBundle('sklearn');
 const pytorch = loadBundle('pytorch');
 const PROXY = 'http://127.0.0.1:12375';
+/** M10: the same suite runs against Docker or kind (`MO_TEST_RUNTIME`, see global-setup). */
+const RUNTIME = inject('runtime');
+const NAMESPACE = inject('runtimeEnv').MO_K8S_NAMESPACE ?? '';
 const GATEWAY = () => inject('gatewayUrl');
 let n = 0;
 
@@ -113,7 +120,7 @@ async function deployed(endpointId: string, versionId: string): Promise<Revision
   return runToEnd((res.body as Revision).id);
 }
 
-async function inspect(revisionId: string) {
+async function dockerInspect(revisionId: string) {
   const res = await fetch(`${PROXY}/containers/mo-rev-${revisionId}/json`);
   return res.status === 404
     ? null
@@ -225,21 +232,41 @@ describe('deploy -> READY -> predict', () => {
     ]);
     expect((await getEndpoint(ep.id)).stableRevision?.id).toBe(rev.id);
 
-    // docs/02 §8: the container runs exactly as designed.
-    const c = await inspect(rev.id);
-    expect(c?.State.Status).toBe('running');
-    expect(c?.Config.User).toBe('10001:10001');
-    expect(c?.HostConfig).toMatchObject({
-      ReadonlyRootfs: true,
-      CapDrop: ['ALL'],
-      SecurityOpt: ['no-new-privileges'],
-      NetworkMode: 'modelops-inference',
-      Memory: 512 * 1024 * 1024,
-      NanoCpus: 500_000_000,
-      PidsLimit: 128,
-      RestartPolicy: { Name: 'no' },
-    });
-    expect(c?.Config.Labels['modelops.instance']).toBe(inject('instanceId'));
+    // docs/02 §8: the model server runs exactly as designed, on either runtime.
+    expect((await driver().inspect(rev.id))?.state).toBe('running');
+    if (RUNTIME === 'kubernetes') {
+      const pod = readPod(NAMESPACE, `mo-rev-${rev.id}`);
+      expect(pod?.status.phase).toBe('Running');
+      expect(pod?.spec).toMatchObject({
+        restartPolicy: 'Never', // restarts are the reconciler's, with its budget
+        automountServiceAccountToken: false,
+        securityContext: { runAsNonRoot: true, runAsUser: 10001, runAsGroup: 10001 },
+      });
+      expect(pod?.spec.containers[0]?.securityContext).toEqual({
+        readOnlyRootFilesystem: true,
+        allowPrivilegeEscalation: false,
+        capabilities: { drop: ['ALL'] },
+      });
+      expect(pod?.spec.containers[0]?.resources).toEqual({
+        requests: { cpu: '500m', memory: '512Mi' },
+        limits: { cpu: '500m', memory: '512Mi' },
+      });
+      expect(pod?.metadata.labels['modelops.instance']).toBe(inject('instanceId'));
+    } else {
+      const c = await dockerInspect(rev.id);
+      expect(c?.Config.User).toBe('10001:10001');
+      expect(c?.HostConfig).toMatchObject({
+        ReadonlyRootfs: true,
+        CapDrop: ['ALL'],
+        SecurityOpt: ['no-new-privileges'],
+        NetworkMode: 'modelops-inference',
+        Memory: 512 * 1024 * 1024,
+        NanoCpus: 500_000_000,
+        PidsLimit: 128,
+        RestartPolicy: { Name: 'no' },
+      });
+      expect(c?.Config.Labels['modelops.instance']).toBe(inject('instanceId'));
+    }
 
     // Inference correctness: gateway output == the ONNX Runtime outputs recorded at training.
     const golden = goldenOf(sklearn);
@@ -284,8 +311,8 @@ describe('deploy -> READY -> predict', () => {
     // Grace period is 0 in tests: the next reconcile retires the drained revision.
     await reconciler().reconcile();
     expect((await getRevision(first.id)).state).toBe('RETIRED');
-    expect(await inspect(first.id)).toBeNull();
-    expect((await inspect(second.id))?.State.Status).toBe('running');
+    expect(await driver().inspect(first.id)).toBeNull();
+    expect((await driver().inspect(second.id))?.state).toBe('running');
   }, 240_000);
 });
 
@@ -382,7 +409,7 @@ describe('failures and recovery', () => {
     // Crash right after the container was created (state LOADING, never verified).
     await processor().process(id, { stopAfter: 'LOADING' });
     expect((await getRevision(id)).state).toBe('LOADING');
-    expect(await inspect(id)).not.toBeNull();
+    expect(await driver().inspect(id)).not.toBeNull();
 
     // The job is redelivered (stalled lock / reconciler) and continues from LOADING.
     await processor().process(id);
@@ -418,7 +445,7 @@ describe('failures and recovery', () => {
     expect(rev.state).toBe('FAILED');
     expect(rev.failureCode).toBe('ARTIFACT_CHECKSUM_MISMATCH');
     expect(rev.failureDetail).toMatch(/expected sha256/);
-    expect(await inspect(rev.id)).toBeNull(); // cleaned up
+    expect(await driver().inspect(rev.id)).toBeNull(); // cleaned up
     expect((await getEndpoint(ep.id)).stableRevision).toBeNull();
   }, 180_000);
 
@@ -437,7 +464,7 @@ describe('failures and recovery', () => {
     const rev = await getRevision(id);
     expect(rev.state).toBe('FAILED');
     expect(rev.failureCode).toBe('TIMEOUT');
-    expect(await inspect(id)).toBeNull();
+    expect(await driver().inspect(id)).toBeNull();
   }, 180_000);
 
   it('a crashed model server is restarted (self-healing) within a budget, then FAILED', async () => {
@@ -479,6 +506,67 @@ describe('failures and recovery', () => {
     expect((await getEndpoint(ep.id)).stableRevision).toBeNull();
   }, 240_000);
 
+  // M12: the ramp benchmark found that one slow health check restarted a busy, healthy server.
+  it('a running model server that misses health checks keeps serving; only 3 misses in a row restart it', async () => {
+    const ep = await newEndpoint();
+    const rev = await deployed(ep.id, await validatedVersion(sklearn));
+    expect(rev.state).toBe('READY');
+    const db = prismaOf(app).deploymentRevision;
+    const row = asRows(goldenOf(sklearn).inputs.slice(0, 1));
+
+    // Its container keeps running and answering predictions; only its health checks fail, as
+    // they do when it is saturated.
+    const UNHEALTHY_STREAK = worker.get<AppConfig>(APP_CONFIG).deploy.unhealthyStreak; // 3
+    const probe = worker.get(ModelServerProbe);
+    const realReady = probe.ready.bind(probe);
+    const missChecks = () =>
+      vi
+        .spyOn(probe, 'ready')
+        .mockImplementation((id) => (id === rev.id ? Promise.resolve(false) : realReady(id)));
+
+    let spy = missChecks();
+    for (let miss = 1; miss < UNHEALTHY_STREAK; miss++) {
+      const report = await reconciler().reconcile();
+      expect(report.slow).toBeGreaterThanOrEqual(1);
+      const now = await db.findUniqueOrThrow({ where: { id: rev.id } });
+      expect(now).toMatchObject({ state: 'READY', healthFailures: miss, restartCount: 0 });
+    }
+    const served = await predict(ep.slug, row);
+    expect(served.status).toBe(200); // still in routing while it misses checks
+    expect(served.headers.get('x-revision-id')).toBe(rev.id);
+
+    // One answered check ends the streak.
+    spy.mockRestore();
+    await reconciler().reconcile();
+    expect(await db.findUniqueOrThrow({ where: { id: rev.id } })).toMatchObject({
+      state: 'READY',
+      healthFailures: 0,
+    });
+
+    // Three misses in a row: hung, not busy. Out of routing and restarted (within the budget).
+    spy = missChecks();
+    let last;
+    for (let miss = 1; miss <= UNHEALTHY_STREAK; miss++) last = await reconciler().reconcile();
+    expect(last?.degraded).toBeGreaterThanOrEqual(1);
+    expect(last?.restarted).toBeGreaterThanOrEqual(1);
+    const degraded = await getRevision(rev.id);
+    expect(degraded.state).toBe('DEGRADED');
+    expect(degraded.events.at(-1)?.toState).toBe('DEGRADED');
+    expect((await db.findUniqueOrThrow({ where: { id: rev.id } })).restartCount).toBe(1);
+
+    // Answering again: back in service.
+    spy.mockRestore();
+    const healed = await eventually(
+      async () => {
+        await reconciler().reconcile();
+        return getRevision(rev.id);
+      },
+      (r) => r.state === 'READY',
+      60_000,
+    );
+    expect(healed.state).toBe('READY');
+  }, 240_000);
+
   it('cancel before READY: no container survives; lost jobs are re-enqueued', async () => {
     const ep = await newEndpoint();
     const versionId = await validatedVersion(sklearn);
@@ -488,7 +576,7 @@ describe('failures and recovery', () => {
     expect((cancelled.body as Revision).state).toBe('CANCELLED');
     await relay();
     await processor().process(id);
-    expect(await inspect(id)).toBeNull();
+    expect(await driver().inspect(id)).toBeNull();
     const again = await ada.post(`/orgs/${ada.orgId}/revisions/${id}/cancel`);
     expect(again.status).toBe(409);
 
@@ -506,6 +594,29 @@ describe('failures and recovery', () => {
     await processor().process(id2);
     expect((await getRevision(id2)).state).toBe('READY');
   }, 240_000);
+});
+
+// M10: on Docker, isolation is the internal `inference` network (SEC tests in security.int.spec);
+// on Kubernetes it is the NetworkPolicy each revision gets. Probed from real pods, both ways.
+describe.runIf(RUNTIME === 'kubernetes')('network isolation on Kubernetes (M10)', () => {
+  it('only gateway pods reach a model server; it reaches S3 but not Postgres or Redis', async () => {
+    const ep = await newEndpoint();
+    const rev = await deployed(ep.id, await validatedVersion(sklearn));
+    expect(rev.state).toBe('READY');
+    const pod = `mo-rev-${rev.id}`;
+    const host = `${pod}.${NAMESPACE}.svc.cluster.local`;
+
+    // Ingress: from another namespace, a pod labelled as a gateway gets in; any other pod doesn't.
+    expect(tcpFromNewPod('default', { 'app.kubernetes.io/name': 'gateway' }, host, 8000)).toBe(
+      'OPEN',
+    );
+    expect(tcpFromNewPod('default', { 'modelops.test-probe': 'true' }, host, 8000)).toBe('BLOCKED');
+
+    // Egress: object storage yes (it downloaded its artifact); the databases no.
+    expect(tcpFromPod(NAMESPACE, pod, 'seaweedfs', 8333)).toBe('OPEN');
+    expect(tcpFromPod(NAMESPACE, pod, 'postgres', 5432)).toBe('BLOCKED');
+    expect(tcpFromPod(NAMESPACE, pod, 'redis', 6379)).toBe('BLOCKED');
+  }, 300_000);
 });
 
 describe('API keys at the gateway (ADR-0006)', () => {
@@ -563,8 +674,11 @@ describe('API keys at the gateway (ADR-0006)', () => {
       403,
     );
     const published = await worker.get(DataPlanePublisher).buildRouting();
+    // Docker: `mo-rev-<id>` on the inference network; kind: the Service `mo-rev-<id>.<ns>.svc…`.
+    const suffix = RUNTIME === 'kubernetes' ? `\\.${NAMESPACE}\\.svc\\.cluster\\.local` : '';
+    const url = new RegExp(`^http://mo-rev-[0-9a-f-]{36}${suffix}:8000$`);
     for (const e of Object.values(published.endpoints)) {
-      if (e.revision) expect(e.revision.url).toMatch(/^http:\/\/mo-rev-[0-9a-f-]{36}:8000$/);
+      if (e.revision) expect(e.revision.url).toMatch(url);
     }
   });
 });

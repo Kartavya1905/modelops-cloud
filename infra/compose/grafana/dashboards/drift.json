@@ -1,0 +1,160 @@
+{
+  "uid": "modelops-drift",
+  "title": "ModelOps · Drift & releases",
+  "description": "Data drift, canary analyses and evaluation gates from the platform database (M7, M8).",
+  "tags": ["modelops"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "editable": false,
+  "time": {
+    "from": "now-7d",
+    "to": "now"
+  },
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Drift share per endpoint (share of features that drifted)",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${db}"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "time_series",
+          "rawSql": "SELECT d.created_at AS time, e.slug AS metric, d.drift_share AS value FROM drift_reports d JOIN endpoints e ON e.id = d.endpoint_id WHERE $__timeFilter(d.created_at) ORDER BY 1"
+        }
+      ],
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${db}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "custom": {
+            "drawStyle": "points",
+            "pointSize": 6
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "type": "table",
+      "title": "Latest drift checks",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${db}"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "SELECT d.created_at AS time, e.slug AS endpoint, d.sample_count AS requests, d.dataset_drift, round(d.drift_share::numeric, 2) AS drift_share FROM drift_reports d JOIN endpoints e ON e.id = d.endpoint_id ORDER BY d.created_at DESC LIMIT 20"
+        }
+      ],
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${db}"
+      }
+    },
+    {
+      "id": 3,
+      "type": "table",
+      "title": "Canary checks",
+      "gridPos": {
+        "x": 0,
+        "y": 9,
+        "w": 12,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${db}"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "SELECT c.created_at AS time, e.slug AS endpoint, c.verdict, c.aborted, (c.metrics->'canary'->>'errorRate')::float AS canary_error_rate, (c.metrics->>'fallbacks')::int AS fallbacks FROM canary_checks c JOIN endpoints e ON e.id = c.endpoint_id ORDER BY c.created_at DESC LIMIT 20"
+        }
+      ],
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${db}"
+      }
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "title": "Evaluation gates in the time range",
+      "gridPos": {
+        "x": 12,
+        "y": 9,
+        "w": 12,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${db}"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "SELECT status, passed, count(*) AS evaluations FROM evaluation_reports WHERE $__timeFilter(created_at) GROUP BY 1, 2 ORDER BY 1, 2"
+        }
+      ],
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${db}"
+      }
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "db",
+        "label": "Database",
+        "type": "datasource",
+        "query": "grafana-postgresql-datasource",
+        "current": {
+          "text": "ModelOps DB",
+          "value": "modelops-db"
+        },
+        "hide": 0,
+        "refresh": 1,
+        "regex": "",
+        "includeAll": false,
+        "multi": false,
+        "description": "Docker Compose platform (modelops) or the kind platform (modelops_kind, M10)"
+      }
+    ]
+  }
+}

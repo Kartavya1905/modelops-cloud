@@ -1,0 +1,10 @@
+# Copy to terraform.tfvars (gitignored) only if you ever deploy this yourself. This project never
+# does (ADR-0008): CI runs fmt, validate, tflint and checkov without credentials.
+region          = "us-east-1"
+azs             = ["us-east-1a", "us-east-1b"]
+ttl             = "2026-12-31"
+domain          = "modelops.example.com"
+certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/00000000-0000-0000-0000-000000000000"
+image_tag       = "0123456789abcdef0123456789abcdef01234567"
+budget_email    = "you@example.com"
+desired_count   = 0

@@ -56,6 +56,9 @@ test('register, create a project, invite a viewer, and keep strangers out', asyn
   await ada.getByRole('link', { name: 'Audit log' }).click();
   await expect(ada.getByRole('cell', { name: 'project.created' })).toBeVisible();
   await expect(ada.getByRole('cell', { name: 'project.updated' })).toBeVisible();
+  // M9: the hash chain verifies (tampering is covered by the integration tests).
+  await ada.getByRole('button', { name: 'Verify integrity' }).click();
+  await expect(ada.getByTestId('audit-integrity')).toContainText('Intact');
 
   // ---- 3. invite Grace as a Viewer ----------------------------------------------
   await ada.getByRole('link', { name: 'Members' }).click();

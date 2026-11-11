@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 
 from . import SERVER_VERSION
 from .loader import LoadedModel, Settings
+from .tracing import instrument
 
 Row = Annotated[list[float], Field(min_length=1, max_length=1024)]
 
@@ -79,4 +80,5 @@ def create_app(settings: Settings, model: LoadedModel) -> FastAPI:
             "inferenceMs": round(elapsed_ms, 3),
         }
 
+    instrument(app, settings.revision_id, settings.model_version_id)
     return app

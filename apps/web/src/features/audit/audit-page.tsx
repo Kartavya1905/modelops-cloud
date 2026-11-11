@@ -1,11 +1,11 @@
 'use client';
 
-import { useInfiniteQuery } from '@tanstack/react-query';
-import { ScrollTextIcon } from 'lucide-react';
+import { useInfiniteQuery, useMutation } from '@tanstack/react-query';
+import { ScrollTextIcon, ShieldAlertIcon, ShieldCheckIcon } from 'lucide-react';
 import { useState } from 'react';
 import { EmptyState, ErrorState, PageHeader, TableSkeleton } from '@/components/common/states';
 import { Button } from '@/components/ui/button';
-import { Badge, Table, TBody, Td, Th, THead, Tr } from '@/components/ui/primitives';
+import { Alert, Badge, Table, TBody, Td, Th, THead, Tr } from '@/components/ui/primitives';
 import { NativeSelect } from '@/components/ui/select';
 import { useOrgId } from '@/features/org/org-shell';
 import { api, unwrap } from '@/lib/api/client';
@@ -28,6 +28,54 @@ function summarize(metadata: unknown): string {
   return Object.entries(metadata as Record<string, unknown>)
     .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : String(v)}`)
     .join(' · ');
+}
+
+/**
+ * M9: tamper evidence. Every entry's hash covers the one before it; the API recomputes the chain
+ * in the database and reports the first entry that does not verify.
+ */
+function AuditIntegrity({ orgId }: { orgId: string }) {
+  const verify = useMutation({
+    mutationFn: () =>
+      unwrap(api.GET('/api/v1/orgs/{orgId}/audit-events/verify', { params: { path: { orgId } } })),
+  });
+  const v = verify.data;
+  return (
+    <div className="flex flex-wrap items-center gap-3 text-sm" data-testid="audit-integrity">
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={verify.isPending}
+        onClick={() => verify.mutate()}
+      >
+        <ShieldCheckIcon aria-hidden /> {verify.isPending ? 'Verifying…' : 'Verify integrity'}
+      </Button>
+      <span role="status" aria-live="polite" className="contents">
+        {v?.intact && (
+          <span className="flex items-center gap-2">
+            <Badge variant="success">Intact</Badge>
+            {v.checked.toLocaleString()} entries verified
+            {v.head && (
+              <code className="font-mono text-xs text-muted-foreground">
+                head {v.head.slice(0, 12)}…
+              </code>
+            )}
+          </span>
+        )}
+        {v && !v.intact && (
+          <Alert variant="destructive" className="w-full">
+            <span className="flex items-center gap-2 font-medium">
+              <ShieldAlertIcon className="size-4" aria-hidden /> The audit log was changed
+            </span>
+            <span>
+              Entry #{v.brokenAt}: {v.reason}. {v.checked.toLocaleString()} entries before it
+              verify.
+            </span>
+          </Alert>
+        )}
+      </span>
+    </div>
+  );
 }
 
 export function AuditPage() {
@@ -57,7 +105,7 @@ export function AuditPage() {
     <div className="grid gap-6">
       <PageHeader
         title="Audit log"
-        description="An append-only record of who changed what. Entries can't be edited or deleted, even in the database."
+        description="An append-only record of who changed what. The app can't edit or delete entries, and each entry is hash-chained to the one before it, so any change made directly in the database is detectable."
         actions={
           <NativeSelect
             aria-label="Filter by action"
@@ -73,6 +121,7 @@ export function AuditPage() {
           </NativeSelect>
         }
       />
+      <AuditIntegrity orgId={orgId} />
       {query.isPending ? (
         <TableSkeleton rows={6} />
       ) : query.isError ? (

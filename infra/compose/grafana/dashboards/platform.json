@@ -1,0 +1,344 @@
+{
+  "uid": "modelops-platform",
+  "title": "ModelOps · Platform",
+  "description": "Control plane at a glance: what serves, what is in flight, what failed (M10).",
+  "tags": ["modelops"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "editable": false,
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Endpoints serving",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${db}"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "SELECT count(*) FROM endpoints WHERE stable_revision_id IS NOT NULL"
+        }
+      ],
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${db}"
+      },
+      "description": "Endpoints with a stable revision",
+      "options": {
+        "reduceOptions": {
+          "calcs": ["lastNotNull"]
+        },
+        "colorMode": "none",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Deployments in progress",
+      "gridPos": {
+        "x": 6,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${db}"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "SELECT count(*) FROM deployment_revisions WHERE state IN ('REQUESTED','AWAITING_APPROVAL','QUEUED','PROVISIONING','LOADING','VERIFYING')"
+        }
+      ],
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${db}"
+      },
+      "description": "Revisions on their way to READY (incl. awaiting approval)",
+      "options": {
+        "reduceOptions": {
+          "calcs": ["lastNotNull"]
+        },
+        "colorMode": "none",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Approvals waiting",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${db}"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "SELECT count(*) FROM approvals WHERE status = 'PENDING'"
+        }
+      ],
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${db}"
+      },
+      "description": "Production deployments waiting for a second Owner/Admin",
+      "options": {
+        "reduceOptions": {
+          "calcs": ["lastNotNull"]
+        },
+        "colorMode": "none",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Outbox backlog",
+      "gridPos": {
+        "x": 18,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${db}"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "SELECT count(*) FROM outbox_messages WHERE dispatched_at IS NULL"
+        }
+      ],
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${db}"
+      },
+      "description": "Deploy requests not yet handed to the worker; should be ~0",
+      "options": {
+        "reduceOptions": {
+          "calcs": ["lastNotNull"]
+        },
+        "colorMode": "none",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Client requests per second, by status",
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (code) (rate(gateway_requests_total{stack=\"$stack\", source=\"api\"}[1m]))",
+          "legendFormat": "{{code}}"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Deployments started per hour",
+      "gridPos": {
+        "x": 12,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${db}"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "time_series",
+          "rawSql": "SELECT $__timeGroupAlias(created_at, '1h'), count(*) AS deployments FROM deployment_revisions WHERE $__timeFilter(created_at) GROUP BY 1 ORDER BY 1"
+        }
+      ],
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${db}"
+      }
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "Revisions by state",
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 8,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${db}"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "SELECT state, count(*) AS revisions FROM deployment_revisions GROUP BY 1 ORDER BY 2 DESC"
+        }
+      ],
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${db}"
+      }
+    },
+    {
+      "id": 8,
+      "type": "table",
+      "title": "Failures in the time range, by code",
+      "gridPos": {
+        "x": 8,
+        "y": 12,
+        "w": 8,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${db}"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "SELECT failure_code, count(*) AS revisions FROM deployment_revisions WHERE state IN ('FAILED','CANCELLED') AND failure_code IS NOT NULL AND $__timeFilter(updated_at) GROUP BY 1 ORDER BY 2 DESC"
+        }
+      ],
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${db}"
+      }
+    },
+    {
+      "id": 9,
+      "type": "table",
+      "title": "Latest deployments",
+      "gridPos": {
+        "x": 16,
+        "y": 12,
+        "w": 8,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "${db}"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "SELECT r.updated_at AS time, e.slug AS endpoint, r.revision_number AS rev, r.state, r.strategy FROM deployment_revisions r JOIN endpoints e ON e.id = r.endpoint_id ORDER BY r.updated_at DESC LIMIT 15"
+        }
+      ],
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "${db}"
+      }
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "stack",
+        "label": "Stack",
+        "type": "custom",
+        "query": "dev,kind",
+        "current": {
+          "text": "dev",
+          "value": "dev"
+        },
+        "options": [
+          {
+            "text": "dev",
+            "value": "dev",
+            "selected": true
+          },
+          {
+            "text": "kind",
+            "value": "kind",
+            "selected": false
+          }
+        ],
+        "hide": 0,
+        "includeAll": false,
+        "multi": false,
+        "description": "dev = Docker Compose gateway; kind = the platform on Kubernetes (M10)"
+      },
+      {
+        "name": "db",
+        "label": "Database",
+        "type": "datasource",
+        "query": "grafana-postgresql-datasource",
+        "current": {
+          "text": "ModelOps DB",
+          "value": "modelops-db"
+        },
+        "hide": 0,
+        "refresh": 1,
+        "regex": "",
+        "includeAll": false,
+        "multi": false,
+        "description": "Docker Compose platform (modelops) or the kind platform (modelops_kind, M10)"
+      }
+    ]
+  }
+}

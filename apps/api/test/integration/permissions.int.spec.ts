@@ -338,6 +338,11 @@ const ROUTES: RouteCase[] = [
     call: (c) =>
       c.as.post(`/orgs/${c.orgId}/models/${c.modelId}/champion`, { evaluationId: c.versionId }),
   },
+  {
+    name: 'GET audit verify',
+    permission: 'audit:read',
+    call: (c) => c.as.get(`/orgs/${c.orgId}/audit-events/verify`),
+  },
   // ---- M8: releases and approvals (the endpoint is STAGING; an approval id that doesn't exist
   // is 404 *after* authorization, so a 404 proves the role was allowed).
   {

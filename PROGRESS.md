@@ -32,11 +32,11 @@ Legend: ✅ done · 🚧 in progress · ⬜ not started
 | M5 | Inference deployment pipeline | ✅ | [m5-deployment-pipeline.md](docs/milestones/m5-deployment-pipeline.md): unit 214 + 12 + 35, model server 14, integration 221/221 (real Docker), e2e 7/7, smoke 23/23 (2026-11-04); **CI green on Linux**: [run 42692477539](https://github.com/Kartavya1905/modelops-cloud/actions/runs/42692477539) |
 | M6 | Playground and operational dashboard | ✅ | [m6-playground-dashboard.md](docs/milestones/m6-playground-dashboard.md): unit 229 + 13 + 43, integration 242/242 incl. k6 count == dashboard count, e2e 8/8, smoke 24/24 (2026-11-09); **CI green on Linux**: [run 42749620276](https://github.com/Kartavya1905/modelops-cloud/actions/runs/42749620276) |
 | M7 | Drift monitoring and evaluation | ✅ | [m7-drift-evaluation.md](docs/milestones/m7-drift-evaluation.md): unit 255 + 17 + 43, ML 34, ml-worker 40, integration 285/285 incl. data drift vs concept drift and the champion gate (API + DB trigger), e2e 9/9, smoke 25/25 (2026-11-10); **CI green on Linux**: [run 42836362934](https://github.com/Kartavya1905/modelops-cloud/actions/runs/42836362934) |
-| M8 | Canary and rollback | 🚧 | [m8-canary-rollback.md](docs/milestones/m8-canary-rollback.md): unit 271 + 22 + 50, model server 15, integration 331/331 incl. 10 000-request split (9.75 % / 10.06 % at 10 %), fast rollback 85–87 ms, broken canary aborted with errors only in its share, four eyes in API + DB; e2e 10/10 (2026-11-10, local). Not committed yet; CI pending |
-| M9 | Reliability and security hardening | ⬜ | — |
-| M10 | kind and observability | ⬜ | — |
-| M11 | CI/CD and Terraform (validate-only) | ⬜ | — |
-| M12 | Benchmarks, docs, demo | ⬜ | — |
+| M8 | Canary and rollback | ✅ | [m8-canary-rollback.md](docs/milestones/m8-canary-rollback.md): unit 271 + 22 + 50, model server 15, integration 331/331 incl. 10 000-request split (9.75 % / 10.06 % at 10 %), fast rollback 85–87 ms, broken canary aborted with errors only in its share, four eyes in API + DB; e2e 10/10 (2026-11-10); **CI green on Linux**: [run 42899758376](https://github.com/Kartavya1905/modelops-cloud/actions/runs/42899758376) |
+| M9 | Reliability and security hardening | 🚧 | [m9-reliability-security.md](docs/milestones/m9-reliability-security.md): chaos 5/5 with real faults (two runs; found and fixed: a Postgres pause failed in-flight deploys), SEC-1…16 all tested, hardening 19 gaps → 0, audit hash chain, gitleaks/pnpm audit/pip-audit clean; unit 282 + 22 + 50, integration 340/340 on the hardened stack, e2e 10/10, smoke 25/25 (2026-11-11, local). Not committed yet; CI pending |
+| M10 | kind and observability | 🚧 | [m10-kind-observability.md](docs/milestones/m10-kind-observability.md): KubernetesDriver (Pod + Service + NetworkPolicy per revision), the same lifecycle suite 15/15 on kind incl. NetworkPolicy probes from real pods, `pnpm kind:up` (5 min from scratch) + `pnpm kind:smoke` 12/12, one trace gateway → model server in Tempo, 4 Grafana dashboards with live kind data, 6 alert rules (promtool) + runbooks; unit 292 + 25 + 50, model server 16, integration 340/341 on Docker (1 host-port blip, file re-ran green), chaos 5/5, smoke 25/25, e2e 8/10 under full load with kind running (the 2 heaviest re-ran green alone) (2026-11-11, local). Not committed yet; CI (new kind job) pending |
+| M11 | CI/CD and Terraform (validate-only) | 🚧 | [m11-cicd-terraform.md](docs/milestones/m11-cicd-terraform.md): pipeline with path filters, `ci-ok` gate, actions by SHA, images by digest, Dependabot (7-day cooldown), migrations job on a Postgres service container (fails on schema drift, tested), GHCR publish with Trivy + SBOM + provenance; Terraform (7 modules + demo env) passes fmt/validate/tflint/checkov 450/0 with every skip documented; cost estimate + teardown runbook; web image 1.06 GB → 390 MB (2026-11-11, local). Not committed; the pipeline has not run on GitHub yet |
+| M12 | Benchmarks, docs, demo | 🚧 | [m12-benchmarks-demo.md](docs/milestones/m12-benchmarks-demo.md): `pnpm bench` (steady, direct, ramp, canary, rollback, footprint) and a [report generated from raw results](docs/benchmarks/report.md); three full runs, every one shown (0 failed requests in all; gateway median cost 1.5–3.5 ms; p95 targets met in 2 and 1 of 3 runs because of model-server stalls on the loaded laptop; rollback ≤ 145 ms; ≤ 2.8 GiB); found and **fixed** a reconciler flaw (a busy model server was restarted under overload: now 3 failed checks in a row; A/B restarts 2 → 0, +12.3 % answered; Docker 14/14, kind 16/16); demo GIF, demo script, résumé bullets, final README (2026-11-11, local). Not committed |
 
 ## Local prerequisites
 - [x] Node 24.22.2 via fnm (add fnm to your PowerShell profile, see docs/10)
@@ -59,7 +59,10 @@ Legend: ✅ done · 🚧 in progress · ⬜ not started
 - [x] Release actions → `If-Match` on the endpoint instead of Idempotency-Key (M8)
 - [x] Rollback targets → only revisions that served as stable (`stable_at`; an aborted canary never qualifies)
 - [x] `challenger` alias → not needed: a canary is an endpoint revision (M8)
-- [x] Bundle upload → direct multipart to the API with hard limits instead of presigned URLs (M4 deviation; revisit in M9)
+- [x] Postgres RLS → **not built** (Tier 3); audit hash chain built instead (M9 doc)
+- [x] Database outages → retried, never a revision's failure (found by the M9 chaos suite)
+- [x] Base images by digest, Dependabot → done in **M11** (7-day cooldown; actions by SHA too)
+- [x] Bundle upload → direct multipart to the API with hard limits instead of presigned URLs (M4 deviation; reviewed in M9: kept, see the M9 doc)
 - [x] Validation queue → version status as the durable intent + sweeper, no outbox table (ADR-0004 addendum); outbox still in **M5**
 - [x] SEC-6 (deploy-unvalidated trigger) → done in M5 (trigger + API + worker checks)
 - [x] Worker reaches model servers through the gateway's internal admin API (internal network; ADR-0005 addendum)
@@ -67,7 +70,13 @@ Legend: ✅ done · 🚧 in progress · ⬜ not started
 - [x] Production endpoints + approvals → **M8**; M5 serves STAGING endpoints with a verified blue/green switch
 - [x] Prometheus → moved from M10 to **M6** (dashboards need it); Grafana, OpenTelemetry and container CPU/memory stay in M10
 - [x] Playground → gateway internal route instead of a stored internal API key (no secret at rest)
+- [x] Kubernetes runtime → a bare **Pod** per revision, not a Deployment: restarts stay with the reconciler's budget, exit codes stay visible (ADR-0005 addendum)
+- [x] Model-server egress on Kubernetes → `cidr:port` pairs (`MO_K8S_EGRESS`), because compose services share one subnet with Postgres and Redis
+- [x] Container CPU/memory → kind only, via the kubelet's read-only port (local-only exception, docs/06); no cAdvisor for Docker (would need the socket again)
+- [x] Node.js 26 → reviewed in M11, staying on 24 (ADR-0007 addendum 4)
+- [x] Migrations vs schema → CI job on a Postgres service container; reviewed raw-SQL differences in `known-drift.sql`
+- [x] AWS secrets → SSM paths per component, never in Terraform state; `desired_count = 0` is not free (~$40/month idle), only destroy is
+- [x] Platform on kind → separate instance (database `modelops_kind`, Redis DB 1, instance `kind`); stateful services stay in Compose
 
 ## Next actions
-1. M8: push, then record the green CI run
-2. M9: reliability testing and security hardening
+1. Commit and push M9–M12, then record the first run of the new pipeline (`ci-ok`, `kind`, `migrations`, `terraform`, `publish`)

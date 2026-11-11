@@ -1,0 +1,72 @@
+{
+ "at": "2026-11-11T10:37:19.747Z",
+ "note": "docker stats of every modelops-* compose container plus the two model servers of this run; the API, worker and web ran on the host (pnpm dev) and are not included",
+ "containers": [
+  {
+   "name": "mo-rev-7ecc356c-126f-4e9f-b1e6-fedc0f859245",
+   "memMiB": 62.9,
+   "cpu": "0.25%"
+  },
+  {
+   "name": "mo-rev-e5f58ca4-4d24-4660-9382-5a8efb3c1a7d",
+   "memMiB": 84.5,
+   "cpu": "0.15%"
+  },
+  {
+   "name": "modelops-grafana-1",
+   "memMiB": 507.1,
+   "cpu": "1.17%"
+  },
+  {
+   "name": "modelops-tempo-1",
+   "memMiB": 195.7,
+   "cpu": "0.28%"
+  },
+  {
+   "name": "modelops-mlflow-1",
+   "memMiB": 317.3,
+   "cpu": "0.46%"
+  },
+  {
+   "name": "modelops-gateway-1",
+   "memMiB": 206.9,
+   "cpu": "9.89%"
+  },
+  {
+   "name": "modelops-prometheus-1",
+   "memMiB": 73.1,
+   "cpu": "0.35%"
+  },
+  {
+   "name": "modelops-postgres-1",
+   "memMiB": 100.4,
+   "cpu": "0.83%"
+  },
+  {
+   "name": "modelops-otel-collector-1",
+   "memMiB": 104.6,
+   "cpu": "0.20%"
+  },
+  {
+   "name": "modelops-ml-worker-1",
+   "memMiB": 325.1,
+   "cpu": "0.32%"
+  },
+  {
+   "name": "modelops-docker-proxy-1",
+   "memMiB": 11.6,
+   "cpu": "2.20%"
+  },
+  {
+   "name": "modelops-redis-1",
+   "memMiB": 44,
+   "cpu": "0.32%"
+  },
+  {
+   "name": "modelops-seaweedfs-1",
+   "memMiB": 167.4,
+   "cpu": "0.55%"
+  }
+ ],
+ "totalMiB": 2200.6
+}

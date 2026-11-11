@@ -1,0 +1,80 @@
+{
+ "revisions": [
+  {
+   "id": "2e254792-7846-4915-98ac-cdd23b0bfad9",
+   "restartCount": 2
+  }
+ ],
+ "events": [
+  {
+   "revision": "2e254792-7846-4915-98ac-cdd23b0bfad9",
+   "from": null,
+   "to": "REQUESTED",
+   "message": "Deployment of e7e348fc requested",
+   "at": "2026-11-11T17:34:09.25+00:00"
+  },
+  {
+   "revision": "2e254792-7846-4915-98ac-cdd23b0bfad9",
+   "from": "REQUESTED",
+   "to": "QUEUED",
+   "message": "Queued for the deployment worker",
+   "at": "2026-11-11T17:34:09.625+00:00"
+  },
+  {
+   "revision": "2e254792-7846-4915-98ac-cdd23b0bfad9",
+   "from": "QUEUED",
+   "to": "PROVISIONING",
+   "message": "Worker picked up the deployment",
+   "at": "2026-11-11T17:34:09.677+00:00"
+  },
+  {
+   "revision": "2e254792-7846-4915-98ac-cdd23b0bfad9",
+   "from": "PROVISIONING",
+   "to": "LOADING",
+   "message": "Container running; downloading and verifying the artifact",
+   "at": "2026-11-11T17:34:10.328+00:00"
+  },
+  {
+   "revision": "2e254792-7846-4915-98ac-cdd23b0bfad9",
+   "from": "LOADING",
+   "to": "VERIFYING",
+   "message": "Artifact checksum verified and model loaded; running golden examples",
+   "at": "2026-11-11T17:34:14.231+00:00"
+  },
+  {
+   "revision": "2e254792-7846-4915-98ac-cdd23b0bfad9",
+   "from": "VERIFYING",
+   "to": "READY",
+   "message": "Golden examples reproduced (16 rows); serving traffic",
+   "at": "2026-11-11T17:34:14.281+00:00"
+  },
+  {
+   "revision": "2e254792-7846-4915-98ac-cdd23b0bfad9",
+   "from": "READY",
+   "to": "DEGRADED",
+   "message": "Health check failed: container running, 1 checks in a row without an answer",
+   "at": "2026-11-11T17:37:11.793+00:00"
+  },
+  {
+   "revision": "2e254792-7846-4915-98ac-cdd23b0bfad9",
+   "from": "DEGRADED",
+   "to": "READY",
+   "message": "Recovered: health checks passing again",
+   "at": "2026-11-11T17:37:24.751+00:00"
+  },
+  {
+   "revision": "2e254792-7846-4915-98ac-cdd23b0bfad9",
+   "from": "READY",
+   "to": "DEGRADED",
+   "message": "Health check failed: container running, 1 checks in a row without an answer",
+   "at": "2026-11-11T17:37:42.528+00:00"
+  },
+  {
+   "revision": "2e254792-7846-4915-98ac-cdd23b0bfad9",
+   "from": "DEGRADED",
+   "to": "READY",
+   "message": "Recovered: health checks passing again",
+   "at": "2026-11-11T17:37:54.574+00:00"
+  }
+ ]
+}

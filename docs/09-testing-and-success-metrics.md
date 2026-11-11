@@ -64,9 +64,9 @@ The complete list (≈150 cases) is written alongside code in each milestone. Th
 | Metric | Target | Measured by | Result |
 |---|---|---|---|
 | Click → READY (p95, images cached) | ≤ 60 s | `deployment_events` timestamps over 20 deploys | _pending (M5)_ |
-| Gateway added latency (p95) | ≤ 10 ms | k6 to gateway vs direct to model server | _pending (M12)_ |
-| End-to-end predict p95 @ 50 rps | ≤ 25 ms | k6 | _pending (M12)_ |
-| Fast rollback traffic switch | ≤ 10 s | T19 | _pending (M8)_ |
+| Gateway added latency (p95) | ≤ 10 ms | k6 to gateway vs direct to model server | **1.86 / 16.8 / 31.7 ms**: met in 1 of 3 runs; at the median 1.45–3.48 ms. The misses were model-server stalls on the loaded laptop during that window (M12, [the three runs](benchmarks/report.md#every-full-run-in-the-repository)) |
+| End-to-end predict p95 @ 50 rps | ≤ 25 ms | k6 | **4.68 / 23.1 / 34.6 ms**: met in 2 of 3 runs; 0 failed requests in all three (M12, [the three runs](benchmarks/report.md#every-full-run-in-the-repository)) |
+| Fast rollback traffic switch | ≤ 10 s | T19; M12 benchmark | **median 54.0 / 113.8 / 61.6 ms, slowest 145.4 ms** (M12, [the three runs](benchmarks/report.md#every-full-run-in-the-repository)) |
 | Duplicate runtimes under T14/T15 | 0 | T14/T15 | _pending (M5)_ |
 | Chaos scenarios ending in a correct state | 100% | T16, T17 + M9 suite | _pending (M9)_ |
 | Adversarial artifacts executed | 0 | SEC-1…6 | _pending (M4)_ |

@@ -1,0 +1,61 @@
+# Dependabot (M11): proposes updates as pull requests, which then run the full CI pipeline.
+# `cooldown` enforces ADR-0007: a release must be at least 7 days old before it is proposed,
+# giving the ecosystem time to catch a compromised or broken release. Security updates are not
+# delayed by the cooldown. Minor and patch updates are grouped to keep the PR count low.
+version: 2
+
+updates:
+  - package-ecosystem: npm # pnpm workspace: root lockfile
+    directory: /
+    schedule: { interval: weekly, day: monday }
+    cooldown: { default-days: 7 }
+    open-pull-requests-limit: 5
+    groups:
+      npm-minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: uv
+    directories: [/ml, /services/ml-worker, /services/model-server]
+    schedule: { interval: weekly, day: monday }
+    cooldown: { default-days: 7 }
+    open-pull-requests-limit: 5
+    groups:
+      python-minor-and-patch:
+        update-types: [minor, patch]
+
+  # Actions are pinned by commit SHA; Dependabot updates the SHA and the version comment.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly, day: monday }
+    cooldown: { default-days: 7 }
+    groups:
+      actions:
+        patterns: ['*']
+
+  # Base images are pinned by digest; Dependabot updates tag and digest together.
+  - package-ecosystem: docker
+    directories:
+      - /apps/api
+      - /apps/web
+      - /apps/gateway
+      - /services/ml-worker
+      - /services/model-server
+      - /infra/compose/mlflow
+    schedule: { interval: weekly, day: monday }
+    cooldown: { default-days: 7 }
+    groups:
+      base-images:
+        patterns: ['*']
+
+  - package-ecosystem: docker-compose
+    directory: /infra/compose
+    schedule: { interval: weekly, day: monday }
+    cooldown: { default-days: 7 }
+    groups:
+      compose-images:
+        patterns: ['*']
+
+  - package-ecosystem: terraform
+    directories: [/infra/terraform/envs/demo]
+    schedule: { interval: weekly, day: monday }
+    cooldown: { default-days: 7 }

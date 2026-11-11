@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { PrismaService } from '../../common/prisma/prisma.service';
+import { isDatabaseUnavailable, PrismaService } from '../../common/prisma/prisma.service';
 import { ArtifactStore } from '../../common/storage/artifact-store';
 import { APP_CONFIG, type AppConfig } from '../../config/config';
 import type { DeploymentRevision, Prisma } from '../../generated/prisma/client';
@@ -56,6 +56,13 @@ export class DeployProcessor {
         if (!next) return; // READY, lost a CAS, or nothing to do
       }
     } catch (err) {
+      // The database being unavailable is never the revision's fault: leave it where it is and
+      // let the queue retry; if every attempt fails, the reconciler re-enqueues it, and the state
+      // deadline still bounds how long it can take (M9 chaos: Postgres paused mid-transaction).
+      if (isDatabaseUnavailable(err)) {
+        this.logger.warn(`revision ${revisionId}: database unavailable, will retry`);
+        throw err instanceof TransientError ? err : new TransientError((err as Error).message);
+      }
       if (err instanceof TransientError && !opts.isFinalAttempt) throw err;
       const rev = await this.prisma.deploymentRevision.findUnique({ where: { id: revisionId } });
       if (rev && !TERMINAL.has(rev.state) && rev.state !== 'READY') {
@@ -140,6 +147,9 @@ export class DeployProcessor {
         MO_SIGNATURE: JSON.stringify(signature),
         MO_REVISION_ID: rev.id,
         MO_MODEL_VERSION_ID: rev.modelVersionId,
+        ...(this.config.deploy.modelServerOtlpEndpoint
+          ? { OTEL_EXPORTER_OTLP_ENDPOINT: this.config.deploy.modelServerOtlpEndpoint }
+          : {}),
       },
     });
   }

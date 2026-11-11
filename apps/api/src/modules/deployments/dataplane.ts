@@ -4,7 +4,8 @@ import type { Redis } from 'ioredis';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import type { Prisma } from '../../generated/prisma/client';
 import { REDIS } from '../../common/redis/redis.module';
-import { containerName } from './runtime/runtime-driver';
+import { APP_CONFIG, type AppConfig } from '../../config/config';
+import { modelServerUrl } from './runtime/runtime-driver';
 
 /**
  * The control plane -> data plane contract (docs/02 §3, docs/05 §4).
@@ -80,12 +81,12 @@ type RevisionWithModel = Prisma.DeploymentRevisionGetPayload<{
   include: { modelVersion: { include: { model: { select: { name: true } } } } };
 }>;
 
-function routed(rev: RevisionWithModel): RoutedRevision | null {
+function routed(rev: RevisionWithModel, domain: string): RoutedRevision | null {
   const sig = rev.modelVersion.signature as unknown as SignatureJson | undefined;
   if (!sig) return null;
   return {
     id: rev.id,
-    url: `http://${containerName(rev.id)}:8000`,
+    url: modelServerUrl(rev.id, domain),
     modelVersionId: rev.modelVersionId,
     modelName: rev.modelVersion.model.name,
     modelVersion: rev.modelVersion.version,
@@ -103,6 +104,7 @@ export class DataPlanePublisher {
   constructor(
     private readonly prisma: PrismaService,
     @Inject(REDIS) private readonly redis: Redis,
+    @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
 
   async buildRouting(): Promise<RoutingSnapshot> {
@@ -116,10 +118,13 @@ export class DataPlanePublisher {
     const out: Record<string, RoutedEndpoint> = {};
     for (const e of endpoints) {
       // Only a READY revision receives traffic (docs/05 §7 "Safety"); DEGRADED is healing.
-      const stable = e.stableRevision?.state === 'READY' ? routed(e.stableRevision) : null;
+      const stable =
+        e.stableRevision?.state === 'READY'
+          ? routed(e.stableRevision, this.config.deploy.runtime.modelServerDomain)
+          : null;
       const canary =
         e.canaryRevision?.state === 'READY' && e.canaryWeight > 0 && stable
-          ? routed(e.canaryRevision)
+          ? routed(e.canaryRevision, this.config.deploy.runtime.modelServerDomain)
           : null;
       out[`${e.projectId}/${e.slug}`] = {
         endpointId: e.id,

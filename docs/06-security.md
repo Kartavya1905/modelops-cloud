@@ -1,21 +1,24 @@
 # 06 — Security Design and Model Artifact Security Strategy
 
-> Status: **Design (Phase 0)**. Each control lists the test that will prove it (M4, M9).
+> Status: **implemented through M9** (reviewed 2026-11-11). Each control lists the test that proves it; the threat model below has a status column from the M9 review.
 
 ## 1. Threat model (summary)
 
-| Asset | Threat | Control |
-|---|---|---|
-| Inference runtime | Malicious artifact runs code on load (pickle `__reduce__`, custom ops, external data path traversal) | ONNX-only, operator-domain allow-list, no external data, no custom op libraries, sandboxed validation |
-| Inference runtime | Resource exhaustion (huge model, decompression bomb, giant batch) | Size limits, load-time memory and time budget in validation, batch ≤ 64, CPU/memory/pids limits |
-| Tenant data | Cross-tenant read or write (IDOR) | `org_id` on every row, membership guard, scoped queries, 404 on mismatch, Postgres RLS (Tier 3) |
-| Accounts | Credential stuffing, session theft, CSRF | Argon2id, login rate limit, httpOnly SameSite cookies, CSRF token header, session rotation |
-| API keys | Leakage from the database or logs | Only an HMAC-SHA256 of the secret is stored; secret shown once; redacted in logs; scoped, revocable, expiring |
-| Docker host | Orchestrator compromise → host takeover | Socket **proxy** exposing only container endpoints; no `privileged`, no host mounts, no host network for model servers |
-| Supply chain | Vulnerable dependencies or images | Lockfiles, `pnpm audit`, `pip-audit`, Trivy image and filesystem scan, Dependabot, pinned base-image digests |
-| Secrets | Secrets committed to git | `.env` gitignored, `.env.example` only, gitleaks in CI and pre-commit |
-| Customer inputs | Sensitive inputs leaked via logs | Bodies never logged; input capture opt-in per endpoint; 7-day retention |
-| Audit trail | Tampering to hide actions | Append-only trigger, no UPDATE/DELETE grant, hash chain (Tier 3) |
+| Asset | Threat | Control | Status (M9 review) |
+|---|---|---|---|
+| Inference runtime | Malicious artifact runs code on load (pickle `__reduce__`, custom ops, external data path traversal) | ONNX-only, operator-domain allow-list, no external data, no custom op libraries, sandboxed validation | ✅ SEC-1…3 |
+| Inference runtime | Resource exhaustion (huge model, decompression bomb, giant batch) | Size limits, load-time memory and time budget in validation, batch ≤ 64, CPU/memory/pids limits | ✅ SEC-4, SEC-13; pids limits on every container since M9 |
+| Inference runtime | A validated model fails on real inputs (latent bug) | Canary on a share of traffic, automatic analysis and abort, fallback to stable, non-finite outputs refused | ✅ M8 (new since Phase 0) |
+| Tenant data | Cross-tenant read or write (IDOR) | `org_id` on every row, membership guard, scoped queries, 404 on mismatch | ✅ SEC-7, permission matrix. **Postgres RLS: deferred** (Tier 3, see the M9 doc) |
+| Accounts | Credential stuffing, session theft, CSRF | Argon2id, login rate limit, httpOnly SameSite cookies, CSRF token header, session rotation | ✅ SEC-12, SEC-16 |
+| Production | One person ships to production alone, or approves their own change | Four-eyes approvals: API + CHECK constraint + trigger | ✅ SEC-8, SEC-9 (new since Phase 0) |
+| API keys | Leakage from the database or logs | Only an HMAC-SHA256 of the secret is stored; secret shown once; redacted in logs; scoped, revocable, expiring | ✅ SEC-10, SEC-11 |
+| Docker host | Orchestrator compromise → host takeover | Socket **proxy** exposing only container endpoints; no `privileged`, no host mounts, no host network for model servers | ✅ `pnpm check:hardening` (the proxy is the one root container, by design) |
+| Kubernetes (M10) | A model server reaches the databases or other tenants' pods; the worker's credentials are abused | Per-revision NetworkPolicy (ingress only from gateway pods; egress only DNS + S3 + collector by `cidr:port`), default-deny namespace, `restricted` Pod Security, worker-only ServiceAccount with a namespaced Role (no exec, no secrets) | ✅ probed from real pods in `test:k8s`. Enforcement starts once kindnet has seen a new pod's IP (well under a second; see the M10 doc) |
+| Supply chain | Vulnerable dependencies or images | Lockfiles, `pnpm audit`, `pip-audit`, Trivy image scan (CI, M9) | ✅ in CI. **M11:** actions pinned by commit SHA, every image by digest, Dependabot with a 7-day cooldown, workflows linted (actionlint), published images scanned before push and shipped with an SBOM and provenance |
+| Secrets | Secrets committed to git | `.env` gitignored, `.env.example` only, gitleaks over the full history in CI (M9) | ✅. **Not yet:** a pre-commit hook (CI catches it on push) |
+| Customer inputs | Sensitive inputs leaked via logs or events | Bodies never logged; input capture opt-in per endpoint; 7-day retention | ✅ SEC-14 (M9): a sentinel through every path is in no log, event or audit row |
+| Audit trail | Tampering to hide actions | Append-only trigger; hash chain (M9): every entry commits to the one before it, verified in the database | ✅ edits and deletions detected even when made by the table owner. The app role *owns* the tables (migrations run as it), so the trigger, not a missing grant, is what stops the app |
 
 ## 2. Model artifact security strategy
 
@@ -108,22 +111,27 @@ Implementation (M8 names: `approval:decide`, `release:manage`): a `@RequirePermi
 
 - Local: `.env` (gitignored), generated by `scripts/init-env` with random values. `.env.example` is committed with placeholders only.
 - Compose: secrets passed as environment variables, or as Docker secrets for the session pepper and DB password.
-- kind (M10): Kubernetes Secrets, created from `.env` by a script, never committed.
+- kind (M10): a Kubernetes Secret (`modelops-secrets`), generated by Kustomize from `infra/k8s/overlays/kind/secrets.env`, which `pnpm kind:up` writes from `.env` (gitignored, mode 600). Only the API and worker read all of it; the gateway gets three keys (`REDIS_URL`, the API-key pepper, its internal token). Model-server pods get no secret at all (a presigned URL per artifact, as on Docker).
 - CI: GitHub Actions secrets (free). Tests use throwaway generated values.
-- AWS (validate-only): Terraform references AWS Secrets Manager / SSM Parameter Store ARNs, with no secret values in code.
+- AWS (validate-only, M11): tasks read SSM SecureString parameters under `/modelops/<env>/<component>/`, created out of band, so no secret value is in the code or the Terraform state; each execution role can read only its own component's path. The RDS master password is generated and kept by RDS in Secrets Manager. CI would push images through GitHub OIDC (no stored AWS keys).
 
 ## 6. Container hardening checklist
 
-- [ ] Multi-stage builds; final images `python:3.12-slim` / `node:24-slim` pinned by digest
-- [ ] `USER 10001` (non-root), `read_only: true`, `tmpfs: /tmp`
-- [ ] `cap_drop: [ALL]`, `security_opt: [no-new-privileges:true]`
-- [ ] CPU, memory and pids limits on every service
-- [ ] Model servers on an `internal: true` network only
-- [ ] Only the docker-socket-proxy mounts `/var/run/docker.sock` (read-only), and only the orchestrator can reach the proxy
-- [ ] Healthchecks for every service
-- [ ] Trivy scan in CI fails on CRITICAL vulnerabilities that have a fix available
+Checked on the **running** containers by `pnpm check:hardening` (`scripts/hardening.mjs`, `docker inspect`), locally and in CI after the e2e tests (M9). Before M9: 19 gaps; after: 0, plus two documented exceptions.
 
-## 7. Adversarial security tests (to implement in M4/M9)
+- [x] Multi-stage builds for the gateway, ml-worker and model server (MLflow is a single `pip install` stage on a slim base). Base images pinned by digest since M11
+- [x] Non-root, `read_only: true`, `tmpfs` where needed: every container (the one-shot `storage-init` too, as 10001), including Postgres (999), Redis (999) and SeaweedFS (1000) since M9. **Exception:** the Docker socket proxy runs as root with a writable root filesystem (it must read the root-owned socket and renders its config at start-up); it has no capabilities, a read-only socket mount and an API allow-list
+- [x] `cap_drop: [ALL]`, `security_opt: [no-new-privileges:true]` on every container
+- [x] CPU, memory and pids limits on every service and every model server
+- [x] Model servers on an `internal: true` network only
+- [x] Only the docker-socket-proxy mounts `/var/run/docker.sock` (read-only), and only the orchestrator can reach the proxy
+- [x] Healthchecks for every long-running service
+- [x] Trivy scan in CI fails on CRITICAL vulnerabilities that have a fix available (our four images; HIGH ones are listed). M10 adds the API and web images (kind job)
+- [x] **Exceptions (M10):** the OTel Collector and Tempo images are distroless, so they cannot run a Docker healthcheck; their health shows in the tracing tests and `pnpm kind:smoke`
+
+**Kubernetes (M10, `infra/k8s`):** every pod runs non-root with a read-only root filesystem, no capabilities, no privilege escalation, RuntimeDefault seccomp and requests/limits; both namespaces enforce the `restricted` Pod Security Standard; only the worker mounts a service-account token. **Local-only exception:** the kind kubelet's read-only port (10255) is enabled so the compose Prometheus can read container CPU/memory without cluster credentials. It is unauthenticated, has no host port mapping and is reachable only from the compose networks on this machine. It must never be enabled on a shared cluster.
+
+## 7. Adversarial security tests (all implemented by M9; the M9 doc maps each to its test)
 
 | ID | Attack | Input | Expected |
 |---|---|---|---|

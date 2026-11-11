@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { Redis } from 'ioredis';
 import { Client } from 'pg';
 import type { TestProject } from 'vitest/node';
+import { startKindDataPlane, stopKindDataPlane } from './kind-runtime';
 
 declare module 'vitest' {
   export interface ProvidedContext {
@@ -12,6 +13,10 @@ declare module 'vitest' {
     gatewayUrl: string;
     gatewayAdminUrl: string;
     instanceId: string;
+    /** M10: where model servers run in this test run (`MO_TEST_RUNTIME`) */
+    runtime: 'docker' | 'kubernetes';
+    /** M10: settings the test API/worker add for that runtime (namespace, context, egress) */
+    runtimeEnv: Record<string, string>;
   }
 }
 
@@ -63,7 +68,10 @@ function startTestGateway(redisUrl: URL): void {
     '-e',
     'MO_GATEWAY_ROUTING_POLL_MS=500',
     '-e',
-    'LOG_LEVEL=warn',
+    'OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318', // M10 trace test (obs profile)
+    '-e',
+    // info: one log line per prediction, so SEC-14 (no inputs in logs) checks real output.
+    'LOG_LEVEL=info',
     'modelops/gateway:dev',
   );
   docker('network', 'connect', 'modelops-inference', GATEWAY);
@@ -124,15 +132,30 @@ export default async function setup(project: TestProject): Promise<() => Promise
   // M5: a test-scoped data plane. Containers carry this instance id, so neither the dev stack's
   // reconciler nor ours ever touches the other's model servers.
   const instanceId = `test-${String(process.pid)}`;
-  removeTestContainers(instanceId);
-  startTestGateway(redisUrl);
-  await waitFor('http://127.0.0.1:18099/healthz', 30_000);
-  project.provide('gatewayUrl', 'http://127.0.0.1:18098');
-  project.provide('gatewayAdminUrl', 'http://127.0.0.1:18099');
   project.provide('instanceId', instanceId);
+  // M10: `MO_TEST_RUNTIME=kubernetes` runs the same suites with model servers as kind pods.
+  const kubernetes = process.env.MO_TEST_RUNTIME === 'kubernetes';
+  const namespace = `mo-test-${String(process.pid)}`;
+  if (kubernetes) {
+    const { env } = startKindDataPlane({ namespace, redisUrl });
+    await waitFor('http://127.0.0.1:18199/healthz', 60_000);
+    project.provide('runtime', 'kubernetes');
+    project.provide('runtimeEnv', env);
+    project.provide('gatewayUrl', 'http://127.0.0.1:18198');
+    project.provide('gatewayAdminUrl', 'http://127.0.0.1:18199');
+  } else {
+    removeTestContainers(instanceId);
+    startTestGateway(redisUrl);
+    await waitFor('http://127.0.0.1:18099/healthz', 30_000);
+    project.provide('runtime', 'docker');
+    project.provide('runtimeEnv', {});
+    project.provide('gatewayUrl', 'http://127.0.0.1:18098');
+    project.provide('gatewayAdminUrl', 'http://127.0.0.1:18099');
+  }
 
   return async () => {
-    removeTestContainers(instanceId);
+    if (kubernetes) stopKindDataPlane(namespace);
+    else removeTestContainers(instanceId);
     const c = new Client({ connectionString: baseUrl });
     await c.connect();
     await c.query(`DROP DATABASE IF EXISTS "${dbName}" WITH (FORCE)`);

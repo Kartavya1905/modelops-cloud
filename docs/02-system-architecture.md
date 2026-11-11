@@ -244,4 +244,32 @@ Each revision runs in its own container created by the orchestrator through a **
 - receives a short-lived **presigned URL** for exactly one artifact plus its expected SHA-256, so it holds no storage credentials
 - verifies the checksum before loading, and refuses to start on mismatch
 
-In M10 the same driver interface gets a Kubernetes implementation (Deployment + Service + resource limits + NetworkPolicy) on kind.
+On Kubernetes (M10, `MO_RUNTIME_DRIVER=kubernetes`, kind locally) the same driver interface creates, per revision, a **Pod** (`restartPolicy: Never`: restarts stay with the reconciler and its budget), a **Service** `mo-rev-<id>` and a **NetworkPolicy** in the `modelops-models` namespace:
+
+- the same limits, as requests = limits (`cpu: 500m`, `memory: 512Mi` by default), and a kubelet per-pod PID limit of 256
+- the same hardening (uid 10001, read-only root, no capabilities, no privilege escalation, RuntimeDefault seccomp, no service-account token); the namespace enforces the `restricted` Pod Security Standard
+- ingress only from gateway pods on port 8000; egress only to DNS and the configured `cidr:port` pairs (object storage, trace collector), so still no path to Postgres or Redis
+- only the worker holds Kubernetes credentials: a Role limited to pods, services, networkpolicies and pod logs in that one namespace (no exec, no secrets)
+
+Details, and why a Pod rather than a Deployment: [ADR-0005 addendum](adr/0005-runtime-driver-abstraction.md#addendum--m10-implementation-2026-11-11).
+
+## 9. Observability (M10)
+
+```mermaid
+flowchart LR
+  gw[gateway] -- OTLP/HTTP --> col[OTel Collector]
+  api[API + worker] -- OTLP/HTTP --> col
+  ms[model server] -- OTLP/HTTP --> col
+  col --> tempo[(Tempo)]
+  gw -- /metrics --> prom[(Prometheus)]
+  kubelet[kubelet cAdvisor, kind only] --> prom
+  prom --> graf[Grafana]
+  tempo --> graf
+  pg[(Postgres, read-only role)] --> graf
+```
+
+- **Traces:** one prediction is one trace. The gateway starts a SERVER span, wraps the upstream call in a CLIENT span and sends a W3C `traceparent`; the model server (FastAPI instrumentation) continues it. The gateway returns the trace id as `X-Trace-Id`. The API and worker are auto-instrumented (HTTP, undici, pg, ioredis). Tempo keeps traces for 24 h.
+- **Metrics:** Prometheus scrapes the gateways (`stack` = dev, test or kind) and, on kind, the kubelet's cAdvisor endpoint (pod CPU and memory). Six alert rules, each with a runbook in [runbooks/](runbooks/README.md), unit-tested with `promtool`.
+- **Dashboards (provisioned):** Platform, Endpoint, Drift, Kubernetes pods. Panels that read Postgres use a read-only role limited to operational tables (no users, sessions, keys, audit events or prediction data).
+- Everything is local and free: the `obs` compose profile (`pnpm dev:obs`).
+

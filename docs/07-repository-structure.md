@@ -72,30 +72,31 @@ modelops-cloud/
 │   └── config/                    # tsconfig base, eslint config, prettier
 │
 ├── infra/
-│   ├── compose/
-│   │   ├── docker-compose.yml     # core services
-│   │   ├── docker-compose.observability.yml  # prometheus, grafana, otel-collector, tempo, cadvisor
-│   │   ├── postgres/init.sql      # creates modelops + mlflow databases and roles
-│   │   ├── seaweedfs/s3.json      # S3 identities (dev only, generated)
-│   │   └── mlflow/Dockerfile      # mlflow + psycopg + boto3
-│   ├── observability/
-│   │   ├── prometheus/prometheus.yml, rules/*.yml
-│   │   ├── grafana/provisioning/, dashboards/*.json
-│   │   └── otel-collector/config.yaml
-│   ├── k8s/
-│   │   ├── kind-config.yaml
-│   │   ├── base/                  # kustomize: deployments, services, configmaps, networkpolicies
-│   │   └── overlays/local/
-│   └── terraform/                 # Validate-only (zero-cost policy)
-│       ├── modules/{network,iam,ecr,s3,ecs-service,logging}/
-│       └── envs/demo/             # main.tf, variables.tf, cost.md
+│   ├── compose/                   # as built (M10): one compose file, `obs` profile for tracing + Grafana
+│   │   ├── docker-compose.yml     # core services; profile `obs`: otel-collector, tempo, grafana
+│   │   ├── postgres/init/         # databases and roles; 02-grafana.sh = Grafana's read-only role
+│   │   ├── mlflow/Dockerfile      # mlflow + psycopg + boto3
+│   │   ├── prometheus/            # prometheus.yml, rules.yml (alerts), rules.test.yml (promtool)
+│   │   ├── grafana/               # provisioning/ (datasources, dashboards), dashboards/*.json
+│   │   ├── otel/collector.yaml    # OTLP in -> batch -> Tempo
+│   │   └── tempo/tempo.yaml       # local storage, 24 h retention
+│   ├── kind/cluster.yaml          # one node, NodePort mappings on 127.0.0.1, kubelet settings
+│   ├── k8s/                       # Kustomize (M10)
+│   │   ├── base/                  # namespaces, network policies, api, worker (+RBAC), web, gateway
+│   │   └── overlays/kind/         # generated config.env + secrets.env (gitignored) -> ConfigMap/Secret
+│   └── terraform/                 # Validate-only (zero-cost policy); `pnpm tf:check`
+│       ├── .tflint.hcl
+│       ├── modules/{network,logging,ecr,s3,iam,database,ecs}/
+│       └── envs/demo/             # main.tf (+ budget), variables, outputs, lock file, cost.md
 │
 ├── tests/
 │   ├── e2e/                       # Playwright: login → register → deploy → predict → rollback
 │   ├── load/                      # k6 scripts + results/ (raw JSON from real runs)
 │   └── chaos/                     # worker kill, redis restart, duplicate submit scripts
 │
-├── scripts/                       # dev.ps1 / dev.sh, init-env, seed-demo, demo-traffic, cleanup
+├── scripts/                       # init-env, compose, cleanup, demo-*, hardening, kind (up/down), kind-smoke,
+│                                  # terraform-check, check-migrations
+├── .github/                       # workflows/ci.yml (one pipeline), dependabot.yml
 │
 └── docs/
     ├── README.md                  # Index of design docs

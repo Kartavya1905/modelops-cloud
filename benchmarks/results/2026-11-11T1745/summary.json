@@ -1,0 +1,113 @@
+{
+ "run": "2026-11-11T1745",
+ "headline": {
+  "steady_requests": {
+   "value": 9001,
+   "unit": "requests",
+   "source": "benchmarks/results/2026-11-11T1745/steady.json",
+   "field": "metrics.http_reqs.values.count"
+  },
+  "steady_failed": {
+   "value": 0,
+   "unit": "requests",
+   "source": "benchmarks/results/2026-11-11T1745/steady.json",
+   "field": "metrics.http_req_failed.values.passes"
+  },
+  "steady_p50_ms": {
+   "value": 5.4,
+   "unit": "ms",
+   "source": "benchmarks/results/2026-11-11T1745/steady.json",
+   "field": "metrics.http_req_duration.values.med"
+  },
+  "steady_p95_ms": {
+   "value": 34.6,
+   "unit": "ms",
+   "source": "benchmarks/results/2026-11-11T1745/steady.json",
+   "field": "metrics.http_req_duration.values[\"p(95)\"]"
+  },
+  "steady_p99_ms": {
+   "value": 290.6,
+   "unit": "ms",
+   "source": "benchmarks/results/2026-11-11T1745/steady.json",
+   "field": "metrics.http_req_duration.values[\"p(99)\"]"
+  },
+  "gateway_overhead_p50_ms": {
+   "value": 3.48,
+   "unit": "ms",
+   "source": "benchmarks/results/2026-11-11T1745/direct.json",
+   "field": "steady p50 - direct p50"
+  },
+  "gateway_overhead_p95_ms": {
+   "value": 31.66,
+   "unit": "ms",
+   "source": "benchmarks/results/2026-11-11T1745/direct.json",
+   "field": "steady p95 - direct p95"
+  },
+  "ramp_sustained_rps": {
+   "value": 200,
+   "unit": "req/s",
+   "source": "benchmarks/results/2026-11-11T1745/ramp.json",
+   "field": "metrics[\"http_reqs{scenario:rps_200}\"]"
+  },
+  "ramp_sustained_p95_ms": {
+   "value": 16.5,
+   "unit": "ms",
+   "source": "benchmarks/results/2026-11-11T1745/ramp.json",
+   "field": "metrics[\"http_req_duration{scenario:rps_200}\"].values[\"p(95)\"]"
+  },
+  "ab_restarts_old_rule": {
+   "value": 2,
+   "unit": "restarts",
+   "source": "benchmarks/results/2026-11-11T1745/../2026-11-11T1734/events.json",
+   "field": "sum of revisions[].restartCount"
+  },
+  "ab_restarts_fixed": {
+   "value": 0,
+   "unit": "restarts",
+   "source": "benchmarks/results/2026-11-11T1745/../2026-11-11T1740/events.json",
+   "field": "sum of revisions[].restartCount"
+  },
+  "ab_answered_old_rule": {
+   "value": 9831,
+   "unit": "requests",
+   "source": "benchmarks/results/2026-11-11T1745/../2026-11-11T1734/ramp.json",
+   "field": "metrics.checks.values.passes"
+  },
+  "ab_answered_fixed": {
+   "value": 11036,
+   "unit": "requests",
+   "source": "benchmarks/results/2026-11-11T1745/../2026-11-11T1740/ramp.json",
+   "field": "metrics.checks.values.passes"
+  },
+  "canary_share_percent": {
+   "value": 10.56,
+   "unit": "%",
+   "source": "benchmarks/results/2026-11-11T1745/canary.json",
+   "field": "responses_by_revision{revision:<canary>} / all"
+  },
+  "canary_responses": {
+   "value": 6001,
+   "unit": "responses",
+   "source": "benchmarks/results/2026-11-11T1745/canary.json",
+   "field": "responses_by_revision"
+  },
+  "rollback_median_ms": {
+   "value": 61.6,
+   "unit": "ms",
+   "source": "benchmarks/results/2026-11-11T1745/rollback.json",
+   "field": "median of trials[].servedMs"
+  },
+  "rollback_max_ms": {
+   "value": 83.2,
+   "unit": "ms",
+   "source": "benchmarks/results/2026-11-11T1745/rollback.json",
+   "field": "max of trials[].servedMs"
+  },
+  "footprint_gib": {
+   "value": 2.8,
+   "unit": "GiB",
+   "source": "benchmarks/results/2026-11-11T1745/footprint.json",
+   "field": "totalMiB / 1024"
+  }
+ }
+}

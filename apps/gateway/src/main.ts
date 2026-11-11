@@ -6,9 +6,11 @@ import { type ApiKeyEntry, DP, type RoutingSnapshot } from './contract.js';
 import { CircuitBreaker, RateLimiter } from './guards.js';
 import { KeyVerifier } from './keys.js';
 import { RoutingTable } from './routing.js';
+import { startTracing } from './tracing.js';
 
 async function main(): Promise<void> {
   const config = loadConfig();
+  const tracing = startTracing('modelops-gateway'); // M10: no-op without OTEL_EXPORTER_OTLP_ENDPOINT
   const redis = new Redis(config.redisUrl, { maxRetriesPerRequest: 1, enableOfflineQueue: false });
   const sub = new Redis(config.redisUrl, { maxRetriesPerRequest: null });
   redis.on('error', () => undefined);
@@ -86,7 +88,7 @@ async function main(): Promise<void> {
   await admin.listen({ host: '0.0.0.0', port: config.adminPort });
 
   const shutdown = async () => {
-    await Promise.allSettled([pub.close(), admin.close()]);
+    await Promise.allSettled([pub.close(), admin.close(), tracing?.shutdown()]);
     redis.disconnect();
     sub.disconnect();
     process.exit(0);

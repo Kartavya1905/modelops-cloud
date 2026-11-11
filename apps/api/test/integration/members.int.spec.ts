@@ -13,7 +13,7 @@ afterAll(async () => {
 const code = (res: { body: unknown }) => (res.body as Problem).code;
 
 describe('owner rules', () => {
-  it('an Admin cannot grant Owner or change an Owner', async () => {
+  it('SEC-8: an Admin cannot grant Owner or change an Owner', async () => {
     const owner = await Client.register(app);
     const admin = await Client.register(app);
     const other = await Client.register(app);

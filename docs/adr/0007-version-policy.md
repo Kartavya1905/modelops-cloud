@@ -39,3 +39,11 @@ The brief asks for current, maintained, compatible versions. "Latest" is not alw
 - **Python gets the same rule:** `ml/pyproject.toml` sets uv's `exclude-newer = "2026-10-28T00:00:00Z"`, so every Python package (transitive dependencies included) must have been published at least 7 days before the lock was made. `torch` resolved to 2.14.1 because 2.15.0 was 6 days old.
 - **CPU-only PyTorch** comes from the official `download.pytorch.org/whl/cpu` index (an explicit index, used only for `torch`).
 - **mlflow-skinny** is pinned to the server's version (3.17.2) so client and server agree.
+
+## Addendum 4 — M11: pins and automation (2026-11-11)
+
+- **Actions by commit SHA**, with the version in a comment (`actions/checkout@3d3c42e… # v7.0.1`): a moved or hijacked tag cannot change what CI runs.
+- **Container images by digest** (`node:24.22.2-slim@sha256:…`) in every Dockerfile, the compose file, the kind node image, CI steps and scripts. The tag stays for humans, the digest decides.
+- **Dependabot with `cooldown: default-days: 7`** for npm, uv, GitHub Actions, Dockerfiles, compose and Terraform: the same 7-day rule, enforced by the tool that proposes updates. Security updates are not delayed.
+- **Terraform:** the environment pins the AWS provider exactly (`6.71.0`; 6.72.0 was 6.5 days old when M11 was built) and commits `.terraform.lock.hcl` with hashes for linux/amd64, linux/arm64, darwin/arm64 and windows/amd64. Modules accept `>= 6.71.0, < 7.0.0`.
+- **Node.js 26** (LTS since October 2026) was reviewed as planned and **not adopted**: Node 24 is supported until April 2028, every native module the project uses (argon2, Prisma, ONNX Runtime in Python) is proven on it, and a major runtime upgrade belongs in its own change, not in a CI milestone. Revisit when a dependency requires it.

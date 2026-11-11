@@ -1,0 +1,7 @@
+# Terraform working files. The lock file (.terraform.lock.hcl) IS committed.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log

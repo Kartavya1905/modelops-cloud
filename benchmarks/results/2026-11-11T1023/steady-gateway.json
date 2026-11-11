@@ -1,0 +1,92 @@
+{
+ "at": "2026-11-11T10:27:16.060Z",
+ "window": "3m",
+ "queries": {
+  "request_p50": {
+   "promql": "histogram_quantile(0.5, sum by (le) (increase(gateway_request_duration_seconds_bucket{stack=\"dev\", source=\"api\", endpoint=\"bench-2026-11-11t1023\"}[3m])))",
+   "result": [
+    {
+     "metric": {},
+     "value": [
+      1794392836.064,
+      "0.003395688181937689"
+     ]
+    }
+   ]
+  },
+  "upstream_p50": {
+   "promql": "histogram_quantile(0.5, sum by (le) (increase(gateway_upstream_duration_seconds_bucket{stack=\"dev\", revision=~\"e5f58ca4-4d24-4660-9382-5a8efb3c1a7d\"}[3m])))",
+   "result": [
+    {
+     "metric": {},
+     "value": [
+      1794392836.073,
+      "0.001903126376045795"
+     ]
+    }
+   ]
+  },
+  "request_p95": {
+   "promql": "histogram_quantile(0.95, sum by (le) (increase(gateway_request_duration_seconds_bucket{stack=\"dev\", source=\"api\", endpoint=\"bench-2026-11-11t1023\"}[3m])))",
+   "result": [
+    {
+     "metric": {},
+     "value": [
+      1794392836.078,
+      "0.004851636650453529"
+     ]
+    }
+   ]
+  },
+  "upstream_p95": {
+   "promql": "histogram_quantile(0.95, sum by (le) (increase(gateway_upstream_duration_seconds_bucket{stack=\"dev\", revision=~\"e5f58ca4-4d24-4660-9382-5a8efb3c1a7d\"}[3m])))",
+   "result": [
+    {
+     "metric": {},
+     "value": [
+      1794392836.08,
+      "0.004672712328767124"
+     ]
+    }
+   ]
+  },
+  "request_p99": {
+   "promql": "histogram_quantile(0.99, sum by (le) (increase(gateway_request_duration_seconds_bucket{stack=\"dev\", source=\"api\", endpoint=\"bench-2026-11-11t1023\"}[3m])))",
+   "result": [
+    {
+     "metric": {},
+     "value": [
+      1794392836.082,
+      "0.0049810542920993815"
+     ]
+    }
+   ]
+  },
+  "upstream_p99": {
+   "promql": "histogram_quantile(0.99, sum by (le) (increase(gateway_upstream_duration_seconds_bucket{stack=\"dev\", revision=~\"e5f58ca4-4d24-4660-9382-5a8efb3c1a7d\"}[3m])))",
+   "result": [
+    {
+     "metric": {},
+     "value": [
+      1794392836.084,
+      "0.004942432876712329"
+     ]
+    }
+   ]
+  },
+  "requests_by_code": {
+   "promql": "sum by (code) (increase(gateway_requests_total{stack=\"dev\", source=\"api\", endpoint=\"bench-2026-11-11t1023\"}[3m]))",
+   "result": [
+    {
+     "metric": {
+      "code": "200"
+     },
+     "value": [
+      1794392836.086,
+      "8438.882221841248"
+     ]
+    }
+   ]
+  }
+ }
+}

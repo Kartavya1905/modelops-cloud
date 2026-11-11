@@ -11,6 +11,15 @@ const apiUrl = process.env.MO_API_URL ?? 'http://127.0.0.1:4000';
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  // M11: the container image (apps/web/Dockerfile) builds a self-contained server with only the
+  // files it traces as needed. Opt-in, because `next start` (dev, CI) does not run that output.
+  // Tracing starts at the repo root so pnpm's workspace node_modules are found.
+  ...(process.env.NEXT_OUTPUT === 'standalone'
+    ? {
+        output: 'standalone' as const,
+        outputFileTracingRoot: join(import.meta.dirname, '..', '..'),
+      }
+    : {}),
   // Dev only: Next blocks dev assets for hostnames other than `localhost`. This project binds
   // everything to 127.0.0.1 (docs/10), so allow exactly that hostname. No effect in production.
   allowedDevOrigins: ['127.0.0.1'],

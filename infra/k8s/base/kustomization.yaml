@@ -1,0 +1,21 @@
+# M10: the ModelOps control plane on Kubernetes (ADR-0005). Applied by `pnpm kind:up` through the
+# kind overlay, which adds the generated settings and secrets (overlays/kind).
+#
+# Two namespaces:
+#   modelops         API, worker, web, gateway (this kustomization)
+#   modelops-models  model servers: one Pod + Service + NetworkPolicy per revision, created by the
+#                    worker's KubernetesDriver (apps/api/src/modules/deployments/runtime)
+# Stateful services (Postgres, Redis, SeaweedFS, MLflow, ml-worker, Prometheus, the trace
+# pipeline) stay in Docker Compose; the kind node is attached to the compose networks.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: modelops
+resources:
+  - namespaces.yaml
+  - network-policies.yaml
+  - api.yaml
+  - worker.yaml
+  - web.yaml
+  - gateway.yaml

@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { Redis } from 'ioredis';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { REDIS } from '../../common/redis/redis.module';
+import { APP_CONFIG, type AppConfig } from '../../config/config';
 import type { DeploymentRevision } from '../../generated/prisma/client';
 import { DataPlanePublisher } from './dataplane';
 import { DeployProcessor } from './deploy.processor';
@@ -13,11 +14,15 @@ import { transition } from './transition';
 
 const RESTART_BUDGET = 3;
 const RESTART_WINDOW_MS = 10 * 60_000;
+// A RUNNING container must fail MO_UNHEALTHY_STREAK health checks in a row (one per reconcile,
+// every MO_RECONCILE_MS; default 3, as docs/05 specifies) before it counts as hung.
 
 export interface ReconcileReport {
   timedOut: number;
   requeued: number;
   degraded: number;
+  /** running model servers that failed a check but stay in service (streak below the limit) */
+  slow: number;
   recovered: number;
   restarted: number;
   retired: number;
@@ -43,6 +48,7 @@ export class Reconciler {
     private readonly dataplane: DataPlanePublisher,
     @Inject(RUNTIME_DRIVER) private readonly driver: RuntimeDriver,
     @Inject(REDIS) private readonly redis: Redis,
+    @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
 
   /** Returns null if another instance holds the lock. */
@@ -64,6 +70,7 @@ export class Reconciler {
       degraded: 0,
       recovered: 0,
       restarted: 0,
+      slow: 0,
       retired: 0,
       approvalsExpired: 0,
       orphansRemoved: 0,
@@ -133,10 +140,33 @@ export class Reconciler {
         continue;
       }
       const healthy = running && (await this.probe.ready(rev.id).catch(() => false));
-      if (rev.state === 'READY' && !healthy) {
+      if (rev.state === 'READY' && healthy) {
+        if (rev.healthFailures > 0) await this.setHealthFailures(rev.id, 0);
+      } else if (rev.state === 'READY' && !running) {
+        // Crashed or gone: nothing to wait for.
         await this.degrade(rev, container ? `container ${container.state}` : 'container missing');
         report.degraded++;
         report.restarted += (await this.restart(rev.id)) ? 1 : 0;
+      } else if (rev.state === 'READY') {
+        // Running but not answering. Under overload a model server is slow, not dead (found by
+        // the M12 ramp benchmark): keep it serving while the gateway sheds load, and treat it as
+        // hung only after MO_UNHEALTHY_STREAK failed checks in a row.
+        const streak = rev.healthFailures + 1;
+        const limit = this.config.deploy.unhealthyStreak;
+        if (streak < limit) {
+          await this.setHealthFailures(rev.id, streak);
+          report.slow++;
+          this.logger.warn(
+            `health check failed for running ${rev.id} (${String(streak)}/${String(limit)}); still serving`,
+          );
+        } else {
+          await this.degrade(
+            rev,
+            `container running, ${String(streak)} checks in a row without an answer`,
+          );
+          report.degraded++;
+          report.restarted += (await this.restart(rev.id)) ? 1 : 0;
+        }
       } else if (rev.state === 'DEGRADED') {
         if (healthy) {
           await this.prisma.$transaction((tx) =>
@@ -172,9 +202,19 @@ export class Reconciler {
     return report;
   }
 
+  private async setHealthFailures(revisionId: string, healthFailures: number): Promise<void> {
+    await this.prisma.deploymentRevision.update({
+      where: { id: revisionId },
+      data: { healthFailures },
+    });
+  }
+
   private async degrade(rev: DeploymentRevision, why: string): Promise<void> {
     const moved = await this.prisma.$transaction((tx) =>
-      transition(tx, rev, 'DEGRADED', { message: `Health check failed: ${why}` }),
+      transition(tx, rev, 'DEGRADED', {
+        message: `Health check failed: ${why}`,
+        data: { healthFailures: 0 }, // the streak led here; a recovery starts a new one
+      }),
     );
     if (moved) await this.dataplane.publishRouting(true); // stop routing to it right away
   }

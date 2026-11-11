@@ -1,0 +1,63 @@
+# M10: unit tests for the alert rules (`promtool test rules`, run in CI).
+rule_files:
+  - rules.yml
+evaluation_interval: 15s
+
+tests:
+  - name: 10 % server errors for 6 minutes fires; healthy endpoints stay quiet
+    interval: 15s
+    input_series:
+      - series: 'gateway_requests_total{endpoint_id="e1", endpoint="churn", code="200", source="api"}'
+        values: '0+27x40'
+      - series: 'gateway_requests_total{endpoint_id="e1", endpoint="churn", code="502", source="api"}'
+        values: '0+3x40'
+      - series: 'gateway_requests_total{endpoint_id="e2", endpoint="ok", code="200", source="api"}'
+        values: '0+30x40'
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: EndpointHighServerErrorRate
+        exp_alerts:
+          - exp_labels: { severity: warning, endpoint_id: e1, endpoint: churn }
+            exp_annotations:
+              summary: 'churn: more than 5 % of client requests fail (5xx)'
+              runbook_url: docs/runbooks/high-error-rate.md
+
+  - name: playground errors never page anyone
+    interval: 15s
+    input_series:
+      - series: 'gateway_requests_total{endpoint_id="e1", endpoint="churn", code="502", source="playground"}'
+        values: '0+30x40'
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: EndpointHighServerErrorRate
+        exp_alerts: []
+
+  - name: canary fallbacks fire at once
+    interval: 15s
+    input_series:
+      - series: 'gateway_canary_fallback_total{endpoint_id="e1", revision="r2", source="api"}'
+        values: '0 0 5 9'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: CanaryFallingBack
+        exp_alerts:
+          - exp_labels: { severity: warning, endpoint_id: e1 }
+            exp_annotations:
+              summary: A canary is failing; its traffic is being served by stable
+              runbook_url: docs/runbooks/canary-fallback.md
+
+  - name: the dev gateway down for over a minute
+    interval: 15s
+    input_series:
+      - series: 'up{job="gateway", stack="dev", instance="gateway:8081"}'
+        values: '0x10'
+      - series: 'up{job="gateway", stack="test", instance="modelops-gateway-test:8081"}'
+        values: '0x10'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: GatewayDown
+        exp_alerts:
+          - exp_labels: { severity: critical, job: gateway, stack: dev, instance: 'gateway:8081' }
+            exp_annotations:
+              summary: The inference gateway is not answering Prometheus
+              runbook_url: docs/runbooks/gateway-down.md

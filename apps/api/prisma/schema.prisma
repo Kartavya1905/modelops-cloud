@@ -342,6 +342,12 @@ model AuditEvent {
   requestId  String?   @map("request_id")
   ipHash     String?   @map("ip_hash")
   createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  /// M9 hash chain, set by the database (trigger `audit_events_chain`), never by the app:
+  /// position in the org's chain, the previous event's hash, and
+  /// sha256(prev_hash || this event's content). `audit_chain_verify(org)` recomputes it.
+  chainSeq   BigInt?   @map("chain_seq")
+  prevHash   Bytes?    @map("prev_hash")
+  hash       Bytes?
 
   org Organization? @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
@@ -439,6 +445,9 @@ model DeploymentRevision {
   /// Self-healing budget: at most 3 restarts in a 10-minute window, then FAILED.
   restartCount       Int             @default(0) @map("restart_count")
   restartWindowStart DateTime?       @map("restart_window_start") @db.Timestamptz(3)
+  /// M12: consecutive failed health checks of a RUNNING container. A busy model server fails
+  /// some checks under overload; only 3 in a row (a hung one) take it out of routing and restart it.
+  healthFailures     Int             @default(0) @map("health_failures")
   previousRevisionId String?         @map("previous_revision_id") @db.Uuid
   /// M8: IMMEDIATE replaces the stable revision once READY (blue/green, M5); CANARY starts
   /// next to it with `canaryWeight` percent of the traffic.

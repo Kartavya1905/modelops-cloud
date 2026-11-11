@@ -12,6 +12,19 @@ export interface GatewayConfig {
   routingPollMs: number;
   /** Only model servers named like this are reachable (no open proxy). */
   upstreamPattern: RegExp;
+  /**
+   * M10: DNS suffix of model servers. Empty on Docker (`mo-rev-<id>` on the inference network);
+   * `modelops-models.svc.cluster.local` on Kubernetes.
+   */
+  modelServerDomain: string;
+}
+
+const DOMAIN = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+
+/** The model server of one revision, by id (also its DNS name). */
+export function modelServerUrl(config: GatewayConfig, revisionId: string): string {
+  const host = `mo-rev-${revisionId}${config.modelServerDomain ? `.${config.modelServerDomain}` : ''}`;
+  return `http://${host}:8000`;
 }
 
 function int(env: NodeJS.ProcessEnv, name: string, fallback: number, min: number, max: number) {
@@ -31,6 +44,8 @@ function secret(env: NodeJS.ProcessEnv, name: string): string {
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): GatewayConfig {
   const redisUrl = env.REDIS_URL;
   if (!redisUrl?.startsWith('redis')) throw new Error('REDIS_URL must be a redis:// URL');
+  const domain = (env.MO_MODEL_SERVER_DOMAIN ?? '').toLowerCase();
+  if (domain && !DOMAIN.test(domain)) throw new Error('MO_MODEL_SERVER_DOMAIN must be a DNS name');
   return {
     redisUrl,
     apiKeyPepper: secret(env, 'MO_API_KEY_PEPPER'),
@@ -42,6 +57,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): GatewayConfig 
     maxBatch: int(env, 'MO_GATEWAY_MAX_BATCH', 64, 1, 1024),
     bodyLimitBytes: int(env, 'MO_GATEWAY_BODY_LIMIT_BYTES', 256 * 1024, 1024, 10 * 1024 * 1024),
     routingPollMs: int(env, 'MO_GATEWAY_ROUTING_POLL_MS', 15_000, 100, 600_000),
-    upstreamPattern: /^mo-rev-[0-9a-f-]{36}$/,
+    upstreamPattern: new RegExp(
+      `^mo-rev-[0-9a-f-]{36}${domain ? `\\.${domain.replaceAll('.', '\\.')}` : ''}$`,
+    ),
+    modelServerDomain: domain,
   };
 }

@@ -15,7 +15,9 @@ import { PlaygroundController, PlaygroundService } from './playground';
 import { ArtifactUrlSigner, ModelServerProbe } from './probe';
 import { Reconciler } from './reconciler';
 import { ReleasesController, ReleasesService } from './releases';
+import { APP_CONFIG, type AppConfig } from '../../config/config';
 import { DockerDriver } from './runtime/docker.driver';
+import { KubernetesDriver } from './runtime/kubernetes.driver';
 import { RUNTIME_DRIVER } from './runtime/runtime-driver';
 
 /**
@@ -57,7 +59,15 @@ export class DeploymentsModule {}
     Reconciler,
     ModelServerProbe,
     ArtifactUrlSigner,
-    { provide: RUNTIME_DRIVER, useClass: DockerDriver },
+    // M10: the same orchestrator and reconciler drive Docker or Kubernetes (ADR-0005).
+    {
+      provide: RUNTIME_DRIVER,
+      inject: [APP_CONFIG],
+      useFactory: (config: AppConfig) =>
+        config.deploy.runtime.driver === 'kubernetes'
+          ? new KubernetesDriver(config)
+          : new DockerDriver(config),
+    },
     DeployWorker,
     // M8: the canary analysis runs in the worker and may abort a canary.
     EndpointsService,

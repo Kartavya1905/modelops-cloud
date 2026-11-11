@@ -10,6 +10,9 @@ dependencies = [
   "pydantic==2.14.1",
   "numpy==2.5.4",
   "onnxruntime==1.31.1",
+  "opentelemetry-sdk==1.45.2",
+  "opentelemetry-exporter-otlp-proto-http==1.45.2",
+  "opentelemetry-instrumentation-fastapi==0.66b2",
 ]
 
 [dependency-groups]
@@ -25,7 +28,7 @@ packages = ["model_server"]
 
 [tool.uv]
 # Same supply-chain rule as ml/ and ml-worker (ADR-0007): releases at least 7 days old at lock time.
-exclude-newer = "2026-10-28T00:00:00Z"
+exclude-newer = "2026-11-03T00:00:00Z"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

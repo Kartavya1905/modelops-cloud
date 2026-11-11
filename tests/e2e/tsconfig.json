@@ -7,5 +7,12 @@
     "types": ["node"],
     "noEmit": true
   },
-  "include": ["specs", "support", "playwright.config.ts", "screenshots.ts"]
+  "include": [
+    "specs",
+    "support",
+    "playwright.config.ts",
+    "screenshots.ts",
+    "grafana-shots.ts",
+    "demo-recording.ts"
+  ]
 }
