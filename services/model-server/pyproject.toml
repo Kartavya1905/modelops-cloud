@@ -7,7 +7,7 @@ license = "MIT"
 dependencies = [
   "fastapi==0.162.0",
   "uvicorn==0.54.0",
-  "pydantic==2.14.1",
+  "pydantic==2.14.2",
   "numpy==2.5.4",
   "onnxruntime==1.31.1",
   "opentelemetry-sdk==1.45.2",
