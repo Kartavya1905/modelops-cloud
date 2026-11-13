@@ -5,3 +5,5 @@
 *.tfvars
 !*.tfvars.example
 crash.log
+# pnpm aws:* remembers the AWS region it found for the free-plan server here (per machine)
+.aws-region

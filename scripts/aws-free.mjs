@@ -15,14 +15,15 @@
  * and never written anywhere. Terraform runs in the same pinned image as `pnpm tf:check`.
  */
 import { execFileSync, spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const tfDir = join(root, 'infra', 'terraform');
-const REGION = process.env.AWS_REGION ?? 'us-east-1';
+const regionFile = join(tfDir, 'envs', 'free-plan', '.aws-region'); // gitignored
+let REGION = null; // see region()
 // One source of truth for the Terraform image: the one tf:check validates with.
 const TERRAFORM = readFileSync(join(root, 'scripts', 'terraform-check.mjs'), 'utf8').match(
   /hashicorp\/terraform:[^'"]+/,
@@ -39,21 +40,67 @@ function die(msg) {
   process.exit(1);
 }
 
-function aws(...args) {
+/** One AWS CLI call in `region`: { ok, out } or { ok: false, msg }. */
+function awsIn(region, args) {
   try {
-    const out = execFileSync('aws', [...args, '--region', REGION, '--output', 'json'], {
+    const out = execFileSync('aws', [...args, '--region', region, '--output', 'json'], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
     });
-    return out.trim() ? JSON.parse(out) : null;
+    return { ok: true, out: out.trim() ? JSON.parse(out) : null };
   } catch (err) {
     if (err.code === 'ENOENT')
       die('the AWS CLI is not installed: winget install --id Amazon.AWSCLI -e');
     const msg = String(err.stderr ?? err.message);
-    if (/login|expired|credentials|token/i.test(msg))
+    if (/login|expired|credentials|security token/i.test(msg) && !/control policy/i.test(msg))
       die(`not signed in (run \`aws login\`)\n${msg}`);
-    die(msg);
+    return { ok: false, msg };
   }
+}
+
+const denied = (msg) => /service control policy|UnauthorizedOperation|AccessDenied/i.test(msg);
+
+/**
+ * The region to use. Accounts from AWS's project-based sign-up may run servers only in the
+ * project's home region (an AWS-managed service control policy; us-east-1 and us-west-2 then only
+ * allow global services), so unless AWS_REGION says otherwise, the region is found once by asking
+ * each region for its default VPC, and remembered next to the Terraform state.
+ */
+function region() {
+  if (REGION) return REGION;
+  if (process.env.AWS_REGION) return (REGION = process.env.AWS_REGION);
+  if (existsSync(regionFile)) return (REGION = readFileSync(regionFile, 'utf8').trim());
+
+  console.log('aws: finding the region this account may run servers in (once)...');
+  let configured = '';
+  try {
+    configured = execFileSync('aws', ['configure', 'get', 'region'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+  } catch {
+    // no default region configured
+  }
+  const listed = awsIn('us-east-1', ['ec2', 'describe-regions', '--query', 'Regions[].RegionName']);
+  const candidates = [...new Set([configured, 'us-east-1', ...(listed.ok ? listed.out : [])])];
+  for (const r of candidates.filter(Boolean)) {
+    const probe = awsIn(r, ['ec2', 'describe-vpcs', '--filters', 'Name=is-default,Values=true']);
+    if (probe.ok && probe.out.Vpcs.length > 0) {
+      writeFileSync(regionFile, `${r}\n`);
+      console.log(`aws: using region ${r}`);
+      return (REGION = r);
+    }
+    if (!probe.ok && !denied(probe.msg)) die(probe.msg);
+  }
+  return die(
+    'no region lets this account create servers (EC2 with a default VPC). Check the account plan, or set AWS_REGION.',
+  );
+}
+
+function aws(...args) {
+  const res = awsIn(region(), args);
+  if (!res.ok) die(res.msg);
+  return res.out;
 }
 
 /** Temporary credentials of the signed-in CLI session, for one Terraform run. */
@@ -105,7 +152,7 @@ async function tfVars(creds) {
   const extra = opts.allow ? opts.allow.split(',').map((s) => s.trim()) : [];
   const cidrs = [`${await myIp()}/32`, ...extra];
   terraform(['init', '-input=false', '-lockfile=readonly'], creds);
-  return [`-var=allowed_cidrs=${JSON.stringify(cidrs)}`, `-var=region=${REGION}`];
+  return [`-var=allowed_cidrs=${JSON.stringify(cidrs)}`, `-var=region=${region()}`];
 }
 
 function server() {
@@ -139,7 +186,7 @@ async function status() {
     return null;
   }
   console.log(
-    `server   ${s.id} (${s.type}) ${s.state}${s.state === 'running' ? ` since ${s.since}` : ''}`,
+    `server   ${s.id} (${s.type}, ${region()}) ${s.state}${s.state === 'running' ? ` since ${s.since}` : ''}`,
   );
   if (s.state !== 'running' || !s.ip) {
     if (s.state === 'stopped') console.log('         start it with: pnpm aws:start');

@@ -19,7 +19,7 @@ your laptop (your IP only) ──► :3300  web console ─┐
 
 ## 1. What it costs
 
-Nothing out of pocket: a free-plan account cannot be charged. It uses credits (about $0.10 per running hour for the server, plus about $2.40 a month for the 30 GB disk, at us-east-1 list prices; check the EC2 pricing page for current numbers).
+Nothing out of pocket: a free-plan account cannot be charged. It uses credits (about $0.10 per running hour for the server, plus about $2.40 a month for the 30 GB disk, at us-east-1/us-east-2 list prices; check the EC2 pricing page for current numbers).
 
 | Usage | Credits per month (approx.) |
 |---|---|
@@ -28,7 +28,7 @@ Nothing out of pocket: a free-plan account cannot be charged. It uses credits (a
 | 4 hours a day | $14.50 |
 | Running 24/7 (don't) | $75 |
 
-Guards: the server **powers itself off 4 hours after every start** (`auto_stop_hours`), there is no Elastic IP, NAT gateway or load balancer (each would cost credits even while idle), and the account has a zero-spend and a $10 monthly budget alert. **Billing and Cost Management → Credits** shows what is left.
+Guards: the server **powers itself off 4 hours after every start** (`auto_stop_hours`), there is no Elastic IP, NAT gateway or load balancer (each would cost credits even while idle), and the account has a zero-spend and a $10 monthly budget alert. Accounts from AWS's project-based sign-up also have a project spend limit (from $20 a month): near it, AWS blocks starting servers rather than spending more. **Billing and Cost Management → Credits** shows what is left.
 
 ## 2. One-time setup (your laptop)
 
@@ -53,6 +53,8 @@ Guards: the server **powers itself off 4 hours after every start** (`auto_stop_h
 3. Docker Desktop running (Terraform runs in a container, as for `pnpm tf:check`).
 
 ## 3. Deploy
+
+**Region.** Accounts from AWS's project-based sign-up may run servers only in the project's home region (an AWS-managed service control policy). On first use the `aws:*` commands ask each region and remember the one that allows servers (`.aws-region`, gitignored); `AWS_REGION` overrides it.
 
 ```bash
 pnpm aws:up
@@ -122,7 +124,7 @@ pnpm aws:down
 
 Type **yes**: the server, its disk (with all data), the firewall and the role are deleted. Do this before the free plan ends.
 
-If the Terraform state on your laptop is lost (`infra/terraform/envs/free-plan/terraform.tfstate`), find leftovers by tag: every resource carries `project = modelops-cloud` and `environment = free-plan` (AWS console → **Resource Groups & Tag Editor → Tag Editor**, region us-east-1), and delete them there: the instance first, then the security group, instance profile and role.
+If the Terraform state on your laptop is lost (`infra/terraform/envs/free-plan/terraform.tfstate`), find leftovers by tag: every resource carries `project = modelops-cloud` and `environment = free-plan` (AWS console → **Resource Groups & Tag Editor → Tag Editor**, in the region `aws:status` prints), and delete them there: the instance first, then the security group, instance profile and role.
 
 ## 8. Troubleshooting
 
@@ -134,5 +136,6 @@ If the Terraform state on your laptop is lost (`infra/terraform/envs/free-plan/t
 | Page does not load, IP admitted | Still starting: `aws:status` until it says up; the first start takes 10–15 minutes. Otherwise the Session Manager logs (§5) |
 | The server stopped by itself | The 4-hour auto-stop did its job: `pnpm aws:start` |
 | `InsufficientInstanceCapacity` on start | AWS has no spare `m7i-flex.large` in that zone right now: try again in a few minutes |
-| `aws:up` fails with an instance type error | Check that the account is on the free plan and the region is us-east-1 |
+| `aws:up` fails with an instance type error | Check that the account is on the free plan |
+| `explicit deny in a service control policy` | The account is a **project** from AWS's newer sign-up: servers are allowed only in the project's home region. The `aws:*` commands find that region on first use and remember it in `infra/terraform/envs/free-plan/.aws-region`; delete that file (or set `AWS_REGION`) to choose again |
 | Login works but every form says "forbidden" | The page was opened on an old IP after a restart: use the address `aws:status` prints |
