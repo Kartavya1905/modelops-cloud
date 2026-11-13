@@ -29,7 +29,7 @@ packages = ["ml_worker"]
 
 [tool.uv]
 # Same supply-chain rule as ml/ (ADR-0007): only releases at least 7 days old at lock time.
-exclude-newer = "2026-10-28T00:00:00Z"
+exclude-newer = "2026-11-06T00:00:00Z"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

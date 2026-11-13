@@ -29,7 +29,7 @@ packages = ["modelops_ml"]
 [tool.uv]
 # Supply-chain policy (ADR-0007): resolve only releases published at least 7 days before this date,
 # including transitive dependencies. Bump deliberately between milestones.
-exclude-newer = "2026-10-28T00:00:00Z"
+exclude-newer = "2026-11-06T00:00:00Z"
 
 # CPU-only PyTorch: no CUDA download (~200 MB instead of ~2.5 GB). Free, runs on any laptop.
 [tool.uv.sources]
