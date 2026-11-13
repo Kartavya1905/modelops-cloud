@@ -1,6 +1,6 @@
 # Milestone 12 — Benchmarks, Documentation, Demo
 
-> **Status: implemented locally (2026-11-11, Windows 11).** Nothing from M9–M12 is committed yet, so no number here has been reproduced on CI; every number comes from a raw result file in this repository, produced by a script in this repository.
+> **Status: done.** Verified locally on 2026-11-11 (Windows 11), then in CI: [run 43080634686](https://github.com/Kartavya1905/modelops-cloud/actions/runs/43080634686) (green). Every number here comes from a raw result file in this repository, produced by a script in this repository.
 
 ![The demo: validation, a canary release, the playground, live traffic and the audit log](../images/demo.gif)
 
@@ -120,4 +120,4 @@ Everything is in the [benchmark report](../benchmarks/report.md), generated from
 - [x] Benchmarks run; report generated; the finding fixed and re-measured
 - [x] Demo GIF, demo script, résumé bullets, README
 - [x] Fix finding 1 (reconciler restarted busy model servers): fixed, tested, measured A/B
-- [ ] Commit M9–M12 and record the CI runs
+- [x] Committed (2ba30c3, a874bd7) and CI green: [run 43080634686](https://github.com/Kartavya1905/modelops-cloud/actions/runs/43080634686)

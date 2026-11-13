@@ -18,6 +18,7 @@ Phase 0 design set. Read in order for the full picture, or jump to what an inter
 | 11 | [AWS (optional)](11-aws-optional.md) | 16. AWS architecture, IAM, cost estimate (validate-only) |
 | 12 | [Risk register](12-risk-register.md) | 17. Risks and scope reduction plan |
 | 13 | [Tech stack versions](13-tech-stack-versions.md) | Verified versions (2026-11-03) |
+| 14 | [AWS free plan](14-aws-free-plan.md) | A live deployment on one EC2 server inside the AWS free plan (ADR-0009) |
 
 ## Milestone write-ups
 
@@ -48,13 +49,14 @@ Phase 0 design set. Read in order for the full picture, or jump to what an inter
 | [0006](adr/0006-sessions-and-api-keys.md) | Cookie sessions for the UI, HMAC-hashed API keys for inference |
 | [0007](adr/0007-version-policy.md) | Stable-only, LTS-first, locked dependency policy |
 | [0008](adr/0008-zero-cost-constraint.md) | Zero-cost constraint; AWS validate-only |
+| [0009](adr/0009-aws-free-plan-single-server.md) | A live AWS deployment inside the free plan: one server (amends 0008) |
 
 ## Deviations from the original brief (and why)
 
 | Brief said | We do | Reason |
 |---|---|---|
 | MinIO | SeaweedFS (S3 API) | MinIO CE no longer ships images or patches (ADR-0003) |
-| Optional AWS deployment | Terraform validated, never applied | Zero-cost constraint (ADR-0008) |
+| Optional AWS deployment | The full AWS design validated, never applied; a single-server deployment inside the AWS free plan instead | Zero-cost constraint (ADR-0008, ADR-0009) |
 | "Latest versions" | Latest **stable and ≥ 7 days old**; Prisma 7.x not 8.0 RC; Node 24 LTS; TypeScript 6 | ADR-0007 |
 | `Pipeline(StandardScaler → GBM)` | GBM without scaler | The scaler broke ONNX parity (4.3e-2); trees are scale-invariant (M3 doc) |
 | MLflow aliases in M3 | `champion` since M7; no `challenger` alias | `champion` requires the evaluation gate (M7 doc); a canary is an endpoint revision, not a registry alias (M8 doc) |

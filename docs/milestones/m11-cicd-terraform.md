@@ -1,6 +1,6 @@
 # Milestone 11 — CI/CD and Optional AWS Infrastructure (validate-only)
 
-> **Status: implemented and verified locally (2026-11-11, Windows 11).** The new pipeline has not run on GitHub yet: M9, M10 and M11 are uncommitted. **No `terraform apply`, no AWS account, no cost (ADR-0008).**
+> **Status: done.** Verified locally on 2026-11-11 (Windows 11), then on GitHub: the new pipeline's second run, [run 43080634686](https://github.com/Kartavya1905/modelops-cloud/actions/runs/43080634686), is green end to end, including `migrations`, `terraform`, `ci-ok` and the first GHCR publish. **No `terraform apply`, no AWS account, no cost (ADR-0008).**
 
 ## A. Problem being solved
 
@@ -129,15 +129,15 @@ The first checkov run had 31 failures. One was real (the database's deletion pro
 
 | Criterion | Status |
 |---|---|
-| Full pipeline: path filters, caching, service containers, Playwright traces, image build + scan, GHCR publish | ✅ built and linted; **not yet run on GitHub** |
+| Full pipeline: path filters, caching, service containers, Playwright traces, image build + scan, GHCR publish | ✅ [run 43080634686](https://github.com/Kartavya1905/modelops-cloud/actions/runs/43080634686) |
 | Terraform modules: network, IAM least privilege, ECR, S3, ECS Fargate, CloudWatch logging (+ database, budget) | ✅ |
 | fmt, validate, tflint, checkov | ✅ 0 failures, every skip documented |
 | Written cost estimate + teardown runbook | ✅ |
 | No `terraform apply`, no AWS account | ✅ |
-| The PR pipeline is green end to end | ⏳ after the push |
+| The PR pipeline is green end to end | ✅ [run 43080634686](https://github.com/Kartavya1905/modelops-cloud/actions/runs/43080634686) |
 
 ## L. Completion checklist
 
 - [x] `pnpm tf:check` green; migrations check green and proven to fail on drift; actionlint clean
 - [x] Docs: docs/06, 07, 10, 11 (as built + cost correction), 13, ADR-0007 addendum 4, runbooks, README, PROGRESS
-- [ ] Commit, push, record the first CI run of the new pipeline (M9, M10 and M11 are all uncommitted)
+- [x] Committed, pushed, CI green: [run 43080634686](https://github.com/Kartavya1905/modelops-cloud/actions/runs/43080634686)

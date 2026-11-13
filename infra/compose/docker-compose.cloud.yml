@@ -1,0 +1,180 @@
+# ModelOps Cloud on one server: the AWS free-plan deployment (docs/14-aws-free-plan.md, ADR-0009).
+#
+# An overlay on docker-compose.yml. On a laptop the API, the deploy worker and the web console run
+# on the host (`pnpm dev`); on the server they run here, as the same images `pnpm kind:up` builds.
+# infra/cloud/start.sh runs it on every boot:
+#
+#   docker compose --project-name modelops --env-file .env --env-file .env.cloud \
+#     -f infra/compose/docker-compose.yml -f infra/compose/docker-compose.cloud.yml \
+#     --profile obs up -d --build --wait
+#
+# Network exposure: only the web console (3300), the inference gateway (18088) and Grafana (13001)
+# listen on the server's interface, and the AWS security group admits only `allowed_cidrs` (your
+# own IP by default). Everything else stays bound to 127.0.0.1 or internal, as on a laptop.
+#
+# MO_PUBLIC_HOST (in .env.cloud, written by start.sh on every boot) is the server's current public
+# IP: the web console's origin (CSRF and cookie checks) and the invoke URL shown to users.
+
+x-hardening: &hardening
+  security_opt:
+    - no-new-privileges:true
+  restart: unless-stopped
+
+# Settings shared by the API and the worker: the containers' view of the same services the laptop
+# reaches on 127.0.0.1 (compare .env.example and scripts/kind.mjs).
+x-app-env: &app-env
+  NODE_ENV: production
+  DATABASE_URL: postgresql://${MO_DB_APP_USER}:${MO_DB_APP_PASSWORD}@postgres:5432/modelops
+  REDIS_URL: redis://:${MO_REDIS_PASSWORD}@redis:6379/0
+  MO_API_HOST: 0.0.0.0
+  MO_PORT_API: '4000'
+  MO_API_DOCS: 'false'
+  MO_WEB_URL: http://${MO_PUBLIC_HOST:?run infra/cloud/start.sh}:${MO_PORT_WEB:-3300}
+  # Plain HTTP on an IP address: Secure cookies would never be sent back (docs/14 explains HTTPS).
+  MO_COOKIE_SECURE: 'false'
+  MO_API_SESSION_PEPPER: ${MO_API_SESSION_PEPPER:?run pnpm env:init}
+  MO_S3_ENDPOINT: http://seaweedfs:8333
+  MO_S3_INTERNAL_ENDPOINT: http://seaweedfs:8333
+  MO_S3_ACCESS_KEY: ${MO_S3_ACCESS_KEY}
+  MO_S3_SECRET_KEY: ${MO_S3_SECRET_KEY}
+  MO_S3_REGION: ${MO_S3_REGION:-us-east-1}
+  MO_MLFLOW_URL: http://mlflow:5000
+  MO_ML_WORKER_URL: http://ml-worker:8000
+  MO_ML_WORKER_TOKEN: ${MO_ML_WORKER_TOKEN}
+  MO_GATEWAY_URL: http://${MO_PUBLIC_HOST}:${MO_PORT_GATEWAY:-18088}
+  MO_GATEWAY_ADMIN_URL: http://gateway:8081
+  MO_GATEWAY_INTERNAL_TOKEN: ${MO_GATEWAY_INTERNAL_TOKEN}
+  MO_API_KEY_PEPPER: ${MO_API_KEY_PEPPER}
+  MO_PROMETHEUS_URL: http://prometheus:9090
+  MO_DOCKER_PROXY_URL: http://docker-proxy:2375
+  MO_RUNTIME_DRIVER: docker
+  MO_MODEL_SERVER_IMAGE: modelops/model-server:dev
+  MO_INSTANCE_ID: aws
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+  MO_MODEL_SERVER_OTLP_ENDPOINT: http://otel-collector:4318
+
+services:
+  # One-shot: apply the database migrations (the `build` stage of the API image has the Prisma CLI
+  # and the migrations; the runtime image deliberately has neither).
+  migrate:
+    image: modelops/api-build:dev
+    build:
+      context: ../..
+      dockerfile: apps/api/Dockerfile
+      target: build
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    restart: 'no'
+    command: ['pnpm', '--filter', '@modelops/api', 'exec', 'prisma', 'migrate', 'deploy']
+    environment:
+      DATABASE_URL: postgresql://${MO_DB_APP_USER}:${MO_DB_APP_PASSWORD}@postgres:5432/modelops
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [backend]
+
+  api:
+    <<: *hardening
+    image: modelops/api:dev
+    build:
+      context: ../..
+      dockerfile: apps/api/Dockerfile
+    read_only: true
+    cap_drop: [ALL]
+    tmpfs: [/tmp]
+    environment:
+      <<: *app-env
+      OTEL_SERVICE_NAME: modelops-api
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:4000/api/v1/health/ready').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 20s
+    deploy:
+      resources:
+        limits: { cpus: '1.0', memory: 768M, pids: 512 }
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      seaweedfs:
+        condition: service_healthy
+    networks: [backend]
+
+  # The deploy worker: same image, other command (M10). It creates one model-server container per
+  # revision through the Docker socket proxy, exactly as on a laptop.
+  worker:
+    <<: *hardening
+    image: modelops/api:dev
+    read_only: true
+    cap_drop: [ALL]
+    tmpfs: [/tmp]
+    command: ['node', '--enable-source-maps', 'dist/worker.js']
+    environment:
+      <<: *app-env
+      OTEL_SERVICE_NAME: modelops-worker
+    deploy:
+      resources:
+        limits: { cpus: '1.0', memory: 768M, pids: 512 }
+    depends_on:
+      api:
+        condition: service_healthy
+      docker-proxy:
+        condition: service_healthy
+      gateway:
+        condition: service_healthy
+    networks: [backend]
+
+  # The web console. Its /api/* forward target (http://api:4000) is fixed when the image is built.
+  web:
+    <<: *hardening
+    image: modelops/web:dev
+    build:
+      context: ../..
+      dockerfile: apps/web/Dockerfile
+    read_only: true
+    cap_drop: [ALL]
+    tmpfs:
+      - /tmp
+      - /app/apps/web/.next/cache:uid=1000,gid=1000
+    ports:
+      - '0.0.0.0:${MO_PORT_WEB:-3300}:3300'
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3300/login').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 15s
+    deploy:
+      resources:
+        limits: { cpus: '1.0', memory: 512M, pids: 512 }
+    depends_on:
+      api:
+        condition: service_healthy
+    networks: [backend]
+
+  # Reachable from outside the server (inside the security group's allow-list): the public
+  # inference port. The admin port stays on 127.0.0.1.
+  gateway:
+    ports: !override
+      - '0.0.0.0:${MO_PORT_GATEWAY:-18088}:8080'
+      - '127.0.0.1:${MO_PORT_GATEWAY_ADMIN:-18089}:8081'
+
+  grafana:
+    ports: !override
+      - '0.0.0.0:${MO_PORT_GRAFANA:-13001}:3000'

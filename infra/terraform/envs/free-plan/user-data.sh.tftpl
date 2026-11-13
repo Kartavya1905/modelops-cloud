@@ -1,0 +1,91 @@
+#!/bin/bash
+# First boot of the ModelOps free-plan server (rendered by main.tf). Installs Docker from Docker's
+# own apt repository, clones the repository, and installs two systemd units:
+#   modelops.service         runs infra/cloud/start.sh on every boot
+#   modelops-autostop.timer  powers the server off ${auto_stop_hours} h after each boot (0 = never)
+# Progress: /var/log/modelops-bootstrap.log, then `journalctl -u modelops` (docs/14 §5).
+set -euo pipefail
+exec > >(tee -a /var/log/modelops-bootstrap.log) 2>&1
+echo "bootstrap start $(date -u)"
+
+# Swap: headroom for the one-off image builds (Next.js and the Python images peak at ~2 GiB each).
+if [ ! -f /swapfile ]; then
+  fallocate -l 2G /swapfile
+  chmod 600 /swapfile
+  mkswap /swapfile
+  swapon /swapfile
+  echo '/swapfile none swap sw 0 0' >> /etc/fstab
+fi
+
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -q
+apt-get install -y -q ca-certificates curl git
+install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+chmod a+r /etc/apt/keyrings/docker.asc
+# shellcheck source=/dev/null
+codename="$(. /etc/os-release && echo "$VERSION_CODENAME")"
+echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $codename stable" \
+  > /etc/apt/sources.list.d/docker.list
+apt-get update -q
+apt-get install -y -q docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+# Container logs are capped, so a chatty service cannot fill the disk.
+cat > /etc/docker/daemon.json <<'JSON'
+{ "log-driver": "json-file", "log-opts": { "max-size": "10m", "max-file": "3" } }
+JSON
+systemctl restart docker
+
+if [ ! -d /opt/modelops/.git ]; then
+  git clone --depth 1 --branch '${git_ref}' '${repo_url}' /opt/modelops
+fi
+chmod +x /opt/modelops/infra/cloud/start.sh
+
+cat > /etc/systemd/system/modelops.service <<'UNIT'
+[Unit]
+Description=ModelOps Cloud (Docker Compose stack)
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/modelops
+ExecStart=/opt/modelops/infra/cloud/start.sh
+TimeoutStartSec=3600
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+auto_stop_hours='${auto_stop_hours}'
+if [ "$auto_stop_hours" != 0 ]; then
+  cat > /etc/systemd/system/modelops-autostop.service <<'UNIT'
+[Unit]
+Description=Power off the ModelOps server (credit guard)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/systemctl poweroff
+UNIT
+  cat > /etc/systemd/system/modelops-autostop.timer <<'UNIT'
+[Unit]
+Description=Power off the ModelOps server ${auto_stop_hours} h after each boot
+
+[Timer]
+OnBootSec=${auto_stop_hours}h
+
+[Install]
+WantedBy=timers.target
+UNIT
+  systemctl daemon-reload
+  systemctl enable modelops-autostop.timer
+  systemctl start modelops-autostop.timer
+fi
+
+systemctl daemon-reload
+systemctl enable modelops.service
+# --no-block: cloud-init finishes now; the first start (image builds) continues in the background.
+systemctl start --no-block modelops.service
+echo "bootstrap done $(date -u); first start running: journalctl -u modelops -f"

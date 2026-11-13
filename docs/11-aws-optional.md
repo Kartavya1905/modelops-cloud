@@ -1,7 +1,9 @@
 # 11 — Optional AWS Architecture and Cost Considerations
 
 > **Zero-cost policy: this design is written and validated, but never deployed.**
-> M11 delivers Terraform that passes `terraform fmt -check`, `terraform validate`, `tflint` and `checkov` in CI, with **no AWS account and no credentials**. No `terraform apply` is ever run by this project. AWS sign-up credits still require a payment card, so they are out of scope too.
+> M11 delivers Terraform that passes `terraform fmt -check`, `terraform validate`, `tflint` and `checkov` in CI, with **no AWS account and no credentials**. No `terraform apply` is ever run on this design: at ~$0.29/hour it would spend the AWS free plan's whole allowance in about a month.
+>
+> **For a live deployment at no cost, see [docs/14](14-aws-free-plan.md)** (ADR-0009): the same platform on one EC2 server inside the AWS free plan.
 
 ## 1. Why include AWS at all?
 

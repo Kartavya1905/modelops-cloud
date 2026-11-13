@@ -4,7 +4,7 @@ A self-service platform to **train → register → validate → deploy → serv
 
 ![Demo: a validated model, a canary release with its live analysis, the playground, traffic by model version, and the audit log verifying its hash chain](docs/images/demo.gif)
 
-> **Status: all 12 milestones built.** Milestones 1–8 are on `main` with green CI; 9–12 (reliability and security, Kubernetes and tracing, CI/CD and Terraform, benchmarks) are verified locally and not yet pushed. [`PROGRESS.md`](PROGRESS.md) says exactly what is done and how it was checked. This README only describes what exists.
+> **Status: all 12 milestones done, on `main` with green CI** ([run 43080634686](https://github.com/Kartavya1905/modelops-cloud/actions/runs/43080634686)). [`PROGRESS.md`](PROGRESS.md) says exactly what is done and how it was checked. This README only describes what exists.
 
 ## What problem does it solve?
 
@@ -86,11 +86,15 @@ pnpm test:chaos           # real faults during deployments
 pnpm test:e2e             # Playwright journeys (real model training) with axe accessibility checks
 pnpm test:smoke           # environment checks
 pnpm check:hardening      # what Docker actually applied to every container
-pnpm tf:check             # the AWS Terraform: fmt, validate, tflint, checkov (never applied)
+pnpm tf:check             # both AWS Terraform environments: fmt, validate, tflint, checkov
 pnpm bench && pnpm bench:report   # the numbers above
 ```
 
 What each milestone tested and the results: [M1](docs/milestones/m1-local-environment.md) · [M2](docs/milestones/m2-auth-orgs-projects.md) · [M3](docs/milestones/m3-experiments-registry.md) · [M4](docs/milestones/m4-validation-artifacts.md) · [M5](docs/milestones/m5-deployment-pipeline.md) · [M6](docs/milestones/m6-playground-dashboard.md) · [M7](docs/milestones/m7-drift-evaluation.md) · [M8](docs/milestones/m8-canary-rollback.md) · [M9](docs/milestones/m9-reliability-security.md) · [M10](docs/milestones/m10-kind-observability.md) · [M11](docs/milestones/m11-cicd-terraform.md) · [M12](docs/milestones/m12-benchmarks-demo.md).
+
+## On AWS, inside the free plan
+
+The same platform can run on one EC2 server (`m7i-flex.large`) paid for by the AWS free plan's credits: `pnpm aws:up` creates it with your own `aws login` session, reachable only from your IP, and it powers itself off after 4 hours. `pnpm aws:status`, `aws:stop`, `aws:start`, `aws:smoke` and `aws:down` do the rest. How, what it costs in credits, and its limits (plain HTTP, one server): [docs/14](docs/14-aws-free-plan.md) and [ADR-0009](docs/adr/0009-aws-free-plan-single-server.md). The full managed-services design (ECS Fargate, RDS, S3) stays validated but unapplied.
 
 ## Design
 

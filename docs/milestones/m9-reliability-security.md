@@ -1,6 +1,6 @@
 # Milestone 9 — Reliability Testing and Security Hardening
 
-> **Status: implemented and verified locally (2026-11-11, Windows 11).** CI on Linux: pending the next push.
+> **Status: done.** Verified locally on 2026-11-11 (Windows 11), then on Linux in CI: [run 43080634686](https://github.com/Kartavya1905/modelops-cloud/actions/runs/43080634686) (green).
 
 ![The audit log verifies its hash chain](../images/m9-audit-integrity.png)
 
@@ -199,4 +199,4 @@ ESLint (strict), Prettier, tsc, contract regenerated: all pass
 - [x] Hardened containers; `pnpm check:hardening`
 - [x] CI: gitleaks, pnpm audit, pip-audit, Trivy, chaos, hardening
 - [x] Threat model review
-- [ ] Green CI run on Linux
+- [x] Green CI run on Linux: [run 43080634686](https://github.com/Kartavya1905/modelops-cloud/actions/runs/43080634686)

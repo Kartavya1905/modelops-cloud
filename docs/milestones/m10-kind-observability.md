@@ -1,6 +1,6 @@
 # Milestone 10 — Local Kubernetes (kind) and Observability
 
-> **Status: implemented and verified locally (2026-11-11, Windows 11).** CI on Linux (new `kind` job): pending the next push. Not committed yet.
+> **Status: done.** Verified locally on 2026-11-11 (Windows 11), then on Linux in CI, including the new `kind` job: [run 43080634686](https://github.com/Kartavya1905/modelops-cloud/actions/runs/43080634686) (green). The first run, [run 43076921779](https://github.com/Kartavya1905/modelops-cloud/actions/runs/43076921779), failed only in `kind` (CPU requests on a 4-CPU runner; see the M12 doc).
 
 ![Model-server pods on kind: CPU and memory as a share of their limits](../images/m10-grafana-kubernetes.png)
 
@@ -188,5 +188,5 @@ kind-smoke: all checks passed
 - [x] Unit, integration (Docker), Kubernetes lifecycle, chaos, smoke, hardening, promtool: all green locally (section H)
 - [x] E2E (Playwright): 8/10 under full load, the other 2 green when re-run alone (section H)
 - [x] Docs: ADR-0005 addendum, docs/02 §8–9, docs/05, docs/06, docs/07, docs/10, docs/13, runbooks, README, PROGRESS
-- [ ] CI: stack job (obs profile, promtool) and the new kind job run on the next push
-- [ ] Commit (waiting for the go-ahead; M9 is also uncommitted)
+- [x] CI: the stack job (obs profile, promtool) and the new kind job are green: [run 43080634686](https://github.com/Kartavya1905/modelops-cloud/actions/runs/43080634686)
+- [x] Committed and pushed with M9, M11 and M12 (2ba30c3, a874bd7)
