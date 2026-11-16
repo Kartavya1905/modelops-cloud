@@ -6,7 +6,7 @@
 #
 # M11: Next.js "standalone" output. The runtime image holds only the server and the files it was
 # traced to need (no full node_modules, no pnpm): see the M11 doc for the size before and after.
-FROM node:24.22.2-slim@sha256:01d566e8d94d8c619591d78652babfccd3c6992a3dffa9ed5ab39e11cf6c70e9 AS build
+FROM node:26.13.0-slim@sha256:5adad64f9a1fca2d51972caa65983634c8a774eb300d72b20f7f2a0f60368072 AS build
 RUN npm install -g pnpm@12.16.1 --no-fund --no-audit
 WORKDIR /repo
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
@@ -21,7 +21,7 @@ COPY apps/web apps/web
 RUN pnpm --filter @modelops/web build
 
 # ---- runtime ----------------------------------------------------------------------------------
-FROM node:24.22.2-slim@sha256:01d566e8d94d8c619591d78652babfccd3c6992a3dffa9ed5ab39e11cf6c70e9 AS runtime
+FROM node:26.13.0-slim@sha256:5adad64f9a1fca2d51972caa65983634c8a774eb300d72b20f7f2a0f60368072 AS runtime
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3300 HOSTNAME=0.0.0.0
 WORKDIR /app
 # server.js + traced dependencies, laid out like the monorepo (apps/web/server.js)
