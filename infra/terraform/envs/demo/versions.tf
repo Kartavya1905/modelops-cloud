@@ -4,7 +4,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "6.71.0" # exact: newest release >= 7 days old (ADR-0007); Dependabot proposes bumps
+      version = "6.73.0" # exact: newest release >= 7 days old (ADR-0007); Dependabot proposes bumps
     }
   }
 
